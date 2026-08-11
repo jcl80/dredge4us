@@ -1,0 +1,27 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck      # unchecked errors — the big one in Go
+    - govet
+    - staticcheck   # by far the highest signal-to-noise
+    - ineffassign
+    - unused
+    - misspell
+    - bodyclose     # unclosed HTTP response bodies
+    - errorlint     # wrapping mistakes with %w
+    - depguard      # forbid packages in specific dirs
+  settings:
+    depguard:
+      rules:
+        lib:
+          files: ["**/lib/**"]
+          deny:
+            - pkg: "database/sql"
+              desc: "lib holds no state; declare a Store interface instead"
+            - pkg: "github.com/jackc/pgx"
+              desc: "lib holds no state; declare a Store interface instead"
+
+formatters:
+  enable:
+    - gofumpt
