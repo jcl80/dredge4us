@@ -1,6 +1,6 @@
 ## Architecture
 
-![Architecture](Architecture.png)
+![Architecture](guides/Architecture.png)
 
 Target:
 
