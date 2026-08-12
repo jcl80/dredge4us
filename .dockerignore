@@ -1,0 +1,7 @@
+frontend
+guides
+.git
+.env
+.env.*
+!.env.example
+*.md

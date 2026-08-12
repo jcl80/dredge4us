@@ -1,0 +1,34 @@
+# DigitalOcean App Platform spec for server/cmd/api.
+#
+# NEVER put the real DATABASE_URL value in this file — DO encrypts SECRET
+# env values after first submission, but the plaintext would still hit
+# git history on the way in. Set the real value through the App Platform
+# console (Settings > App-Level Environment Variables) after first
+# deploy, or pass it out-of-band with `doctl apps update`:
+#
+#   doctl apps update <APP_ID> --spec .do/app.yaml
+#
+# First deploy:
+#
+#   doctl apps create --spec .do/app.yaml
+#   # then set DATABASE_URL for real in the console — the placeholder
+#   # below is intentionally not a working value.
+
+name: dredge4us-api
+region: nyc
+
+services:
+  - name: api
+    github:
+      repo: jcl80/dredge4us
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: Dockerfile
+    source_dir: /
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    envs:
+      - key: DATABASE_URL
+        type: SECRET
+        value: "EDIT_ME_IN_DO_CONSOLE"
