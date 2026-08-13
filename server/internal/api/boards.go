@@ -10,7 +10,7 @@ import (
 // api and poller are separate deployments with no shared config yet.
 // Revisit once that needs to stay in sync automatically (e.g. by reading
 // distinct boards out of the findings table instead).
-var watchedBoards = []string{"g", "sci", "diy", "3"}
+var watchedBoards = []string{"g"}
 
 func boardsHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

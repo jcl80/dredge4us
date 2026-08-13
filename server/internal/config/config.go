@@ -13,7 +13,7 @@ import (
 const (
 	defaultInterval = 20 * time.Second
 	defaultWorkers  = 2
-	defaultBoards   = "g:20s,sci:20s,diy:20s,3:20s"
+	defaultBoards   = "g:20s"
 )
 
 // Board is one watched board and how often to poll its catalog.
@@ -32,7 +32,7 @@ type Config struct {
 // Load reads Config from the environment:
 //
 //	DATABASE_URL   postgres connection string (required)
-//	POLLER_BOARDS  comma-separated board:interval pairs, e.g. "g:20s,sci:20s" (default "g:20s,sci:20s,diy:20s,3:20s")
+//	POLLER_BOARDS  comma-separated board:interval pairs, e.g. "g:20s" (default "g:20s")
 //	POLLER_WORKERS worker pool size (default 2)
 func Load() (Config, error) {
 	dbURL := os.Getenv("DATABASE_URL")
