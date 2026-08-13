@@ -43,4 +43,4 @@ workers:
         value: "EDIT_ME_IN_DO_CONSOLE"
       - key: POLLER_BOARDS
         type: GENERAL
-        value: "g:20s"
+        value: "g:20s,biz:20s"
