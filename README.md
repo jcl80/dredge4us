@@ -15,12 +15,18 @@ Not useful for the merely popular. Memes, discourse, breaking news all reach Twi
 
 Roadmap: 
 
--Live tier. Catalog polling on ~10 watchlist boards.
--Items scoring.
--Rationale expanding.
--Pushing items to slack.
--See evolution across sources. 
--Calculate rate of false negatives/interesting/potentially high scale events precursors.
+Done:
+-Live tier. Catalog polling (currently /g/ and /biz/).
+-Rationale expanding. Findings linked to source threads.
+-See evolution across sources. General thread lineage across reposts.
+-Narrative summaries. Hour/day/week LLM digests of findings/generals activity.
+
+Next, in priority order:
+-Board coverage. Widen the watchlist toward ~10 boards.
+-Detection quality. Better prompts/techniques for the classifier and summarizer.
+-UI. Keep improving the findings/generals/summary surfaces.
+-Push items to Slack, instead of dashboard-only.
+-Noise marking. Let findings be flagged as false positives, to calculate false-negative/precision rates and close the loop on prompt tuning.
 
 TLDR:
 -rate limit shouldnt be a problem in most boards, if you fetch each thread once near end-of-life instead of polling it live.
