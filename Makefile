@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: lint build-api build-poller docker-build-api docker-build-poller run-api run-poller
+.PHONY: lint build-api build-poller build-summarizer docker-build-api docker-build-poller docker-build-summarizer run-api run-poller run-summarizer
 
 lint:
 	@fail=0; \
@@ -14,6 +14,9 @@ build-api:
 build-poller:
 	cd server && go build -o ../bin/poller ./cmd/poller
 
+build-summarizer:
+	cd server && go build -o ../bin/summarizer ./cmd/summarizer
+
 # Reads DATABASE_URL (and friends) from the repo-root .env. Port matches
 # what frontend/.env.local expects API_BASE_URL to be.
 run-api:
@@ -22,11 +25,18 @@ run-api:
 run-poller:
 	set -a && source .env && set +a && cd server && go run ./cmd/poller
 
+# Long-running — generates immediately, then again every hour/day/week.
+run-summarizer:
+	set -a && source .env && set +a && cd server && go run ./cmd/summarizer
+
 docker-build-api:
 	docker build -t dredge4us-api .
 
 docker-build-poller:
 	docker build -f Dockerfile.poller -t dredge4us-poller .
+
+docker-build-summarizer:
+	docker build -f Dockerfile.summarizer -t dredge4us-summarizer .
 
 # Deploys happen by pushing to main — see .do/app.yaml. The app itself is
 # created once through the App Platform console (New App > GitHub repo >

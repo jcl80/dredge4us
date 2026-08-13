@@ -26,6 +26,8 @@ type Finder interface {
 	ListFindings(ctx context.Context, q store.FindingsQuery) ([]store.FindingRecord, error)
 	ListGenerals(ctx context.Context, board string) ([]store.GeneralLineage, error)
 	ListKinds(ctx context.Context, board string) ([]string, error)
+	Summary(ctx context.Context, board string) ([]store.SummaryWindow, error)
+	LatestNarrativeSummaries(ctx context.Context) ([]store.NarrativeSummary, error)
 }
 
 var _ Finder = (*store.Postgres)(nil)
@@ -39,6 +41,8 @@ func New(finder Finder, fc *fourchan.Client) http.Handler {
 	mux.HandleFunc("GET /boards/all", allBoardsHandler(fc))
 	mux.HandleFunc("GET /generals", generalsHandler(finder))
 	mux.HandleFunc("GET /kinds", kindsHandler(finder))
+	mux.HandleFunc("GET /summary", summaryHandler(finder))
+	mux.HandleFunc("GET /summary/narrative", narrativeSummaryHandler(finder))
 	return withLogging(mux)
 }
 

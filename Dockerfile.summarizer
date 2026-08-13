@@ -1,0 +1,21 @@
+# Builds server/cmd/summarizer from the go.work root. See Dockerfile for
+# cmd/api — kept separate rather than sharing one Dockerfile via a build
+# ARG, since DigitalOcean App Platform's declarative builds can't pass
+# --build-arg through the app spec.
+
+FROM golang:1.26-bookworm AS build
+WORKDIR /app
+
+COPY go.work go.work.sum ./
+COPY lib/go.mod lib/go.sum ./lib/
+COPY server/go.mod server/go.sum ./server/
+RUN cd lib && go mod download && cd ../server && go mod download
+
+COPY lib ./lib
+COPY server ./server
+
+RUN CGO_ENABLED=0 GOOS=linux go build -o /out/app ./server/cmd/summarizer
+
+FROM gcr.io/distroless/static-debian12
+COPY --from=build /out/app /app
+ENTRYPOINT ["/app"]

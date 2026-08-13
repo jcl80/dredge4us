@@ -112,3 +112,54 @@ export async function getGenerals(board: string): Promise<GeneralLineage[]> {
 
   return res.json();
 }
+
+export type KindCount = {
+  kind: string;
+  count: number;
+};
+
+export type SummaryWindow = {
+  label: string;
+  totalFindings: number;
+  byKind: KindCount[];
+  newGenerals: number;
+};
+
+// getSummary returns findings/generals activity across three trailing
+// windows (last hour, last 24 hours, last 7 days), optionally scoped to
+// board ("" or omitted means every board).
+export async function getSummary(board?: string): Promise<SummaryWindow[]> {
+  const params = new URLSearchParams();
+  if (board) {
+    params.set("board", board);
+  }
+
+  const res = await fetch(`${apiBase()}/summary?${params}`, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`summary request failed: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export type NarrativeSummary = {
+  window: "hour" | "day" | "week";
+  periodStart: string;
+  periodEnd: string;
+  findingCount: number;
+  summary: string;
+  generatedAt: string;
+};
+
+// getNarrativeSummaries returns the latest LLM-generated prose summary
+// per window (hour/day/week) — not board-scoped, since generation only
+// covers all boards combined (see server/cmd/summarizer). Can return
+// fewer than 3 entries if a window hasn't generated yet.
+export async function getNarrativeSummaries(): Promise<NarrativeSummary[]> {
+  const res = await fetch(`${apiBase()}/summary/narrative`, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`narrative summary request failed: ${res.status}`);
+  }
+
+  return res.json();
+}

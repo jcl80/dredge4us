@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { getBoards, getFindings, getKinds } from "./findings";
+import { getBoards, getFindings, getKinds, getNarrativeSummaries, getSummary } from "./findings";
 import { Navbar } from "./nav";
+import { ExecutiveSummary } from "./summary";
 import { kindBadgeClass, pillClass, timeAgo } from "./ui";
 
 function isLinkable(value: string): boolean {
@@ -20,10 +21,12 @@ export default async function Home(props: PageProps<"/">) {
   const board = typeof searchParams.board === "string" ? searchParams.board : undefined;
   const kind = typeof searchParams.kind === "string" ? searchParams.kind : undefined;
 
-  const [boards, kinds, findings] = await Promise.all([
+  const [boards, kinds, findings, summary, narratives] = await Promise.all([
     getBoards(),
     getKinds(board),
     getFindings(board, kind),
+    getSummary(board),
+    getNarrativeSummaries(),
   ]);
 
   return (
@@ -40,7 +43,13 @@ export default async function Home(props: PageProps<"/">) {
           recurring &quot;general&quot; threads across reposts, so context survives even
           after 4chan prunes the original thread.
         </div>
-        <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
+
+        <h2 className="mt-6 text-sm font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
+          Executive summary{board ? ` — /${board}/` : ""}
+        </h2>
+        <ExecutiveSummary windows={summary} narratives={narratives} scopedToBoard={!!board} />
+
+        <p className="mt-6 text-sm text-zinc-600 dark:text-zinc-400">
           {findings.length} most recent artifact detections.
         </p>
 

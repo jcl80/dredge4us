@@ -161,3 +161,249 @@ func (p *Postgres) ListGenerals(ctx context.Context, board string) ([]GeneralLin
 
 	return out, nil
 }
+
+// KindCount is one finding kind's count within a SummaryWindow.
+type KindCount struct {
+	Kind  string `json:"kind"`
+	Count int    `json:"count"`
+}
+
+// SummaryWindow is findings/generals activity within a trailing time
+// window ending now — e.g. everything found in the last hour.
+type SummaryWindow struct {
+	Label         string      `json:"label"`
+	TotalFindings int         `json:"totalFindings"`
+	ByKind        []KindCount `json:"byKind"`
+	NewGenerals   int         `json:"newGenerals"`
+}
+
+var summaryWindows = []struct {
+	Label string
+	Since time.Duration
+}{
+	{"Last hour", time.Hour},
+	{"Last 24 hours", 24 * time.Hour},
+	{"Last 7 days", 7 * 24 * time.Hour},
+}
+
+// Summary returns findings/generals activity for board (""=all boards)
+// across three trailing windows: last hour, last 24 hours, last 7 days.
+func (p *Postgres) Summary(ctx context.Context, board string) ([]SummaryWindow, error) {
+	out := make([]SummaryWindow, 0, len(summaryWindows))
+	for _, w := range summaryWindows {
+		since := time.Now().Add(-w.Since)
+
+		byKind, err := p.FindingKindCounts(ctx, board, since)
+		if err != nil {
+			return nil, err
+		}
+
+		total := 0
+		for _, kc := range byKind {
+			total += kc.Count
+		}
+
+		newGenerals, err := p.summaryNewGenerals(ctx, board, since)
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, SummaryWindow{
+			Label:         w.Label,
+			TotalFindings: total,
+			ByKind:        byKind,
+			NewGenerals:   newGenerals,
+		})
+	}
+	return out, nil
+}
+
+// FindingKindCounts returns findings counted by kind for board (""=all
+// boards) since the given time. Also used directly by the narrative
+// summarizer (server/cmd/summarizer), not just Summary.
+func (p *Postgres) FindingKindCounts(ctx context.Context, board string, since time.Time) ([]KindCount, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT kind, count(*)
+		FROM findings
+		WHERE found_at >= $1 AND ($2 = '' OR board = $2)
+		GROUP BY kind
+		ORDER BY count(*) DESC
+	`, since, board)
+	if err != nil {
+		return nil, fmt.Errorf("query finding kind counts: %w", err)
+	}
+	defer rows.Close()
+
+	out := []KindCount{}
+	for rows.Next() {
+		var kc KindCount
+		if err := rows.Scan(&kc.Kind, &kc.Count); err != nil {
+			return nil, fmt.Errorf("scan kind count: %w", err)
+		}
+		out = append(out, kc)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate kind counts: %w", err)
+	}
+
+	return out, nil
+}
+
+func (p *Postgres) summaryNewGenerals(ctx context.Context, board string, since time.Time) (int, error) {
+	var count int
+	err := p.pool.QueryRow(ctx, `
+		SELECT count(*)
+		FROM general_threads
+		WHERE first_seen_at >= $1 AND ($2 = '' OR board = $2)
+	`, since, board).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("query summary new generals: %w", err)
+	}
+	return count, nil
+}
+
+// FindingsSince returns the most recent findings (across every board)
+// found at or after since, newest first, capped at limit. Used by the
+// narrative summarizer to feed concrete examples into its prompt — see
+// FindingKindCounts for the full-window breakdown that isn't capped.
+func (p *Postgres) FindingsSince(ctx context.Context, since time.Time, limit int) ([]FindingRecord, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT id, board, thread_no, post_no, post_time, detector, kind, matched_value, note, thread_subject, thread_replies, found_at
+		FROM findings
+		WHERE found_at >= $1
+		ORDER BY found_at DESC, id DESC
+		LIMIT $2
+	`, since, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query findings since: %w", err)
+	}
+	defer rows.Close()
+
+	out := []FindingRecord{}
+	for rows.Next() {
+		var f FindingRecord
+		if err := rows.Scan(
+			&f.ID, &f.Board, &f.ThreadNo, &f.PostNo, &f.PostTime,
+			&f.Detector, &f.Kind, &f.MatchedValue, &f.Note, &f.ThreadSubject, &f.ThreadReplies, &f.FoundAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan finding: %w", err)
+		}
+		out = append(out, f)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate findings: %w", err)
+	}
+
+	return out, nil
+}
+
+// GeneralActivity is one general thread's shape at the moment it
+// started or ended, for narrative summary input.
+type GeneralActivity struct {
+	Board         string
+	ThreadSubject string
+	Replies       int
+}
+
+// NewGenerals returns general threads first seen at or after since.
+func (p *Postgres) NewGenerals(ctx context.Context, since time.Time) ([]GeneralActivity, error) {
+	return p.generalActivity(ctx, `
+		SELECT board, thread_subject, replies FROM general_threads
+		WHERE first_seen_at >= $1 ORDER BY first_seen_at DESC
+	`, since)
+}
+
+// EndedGenerals returns general threads that ended (went gone from the
+// catalog) at or after since.
+func (p *Postgres) EndedGenerals(ctx context.Context, since time.Time) ([]GeneralActivity, error) {
+	return p.generalActivity(ctx, `
+		SELECT board, thread_subject, replies FROM general_threads
+		WHERE ended_at >= $1 ORDER BY ended_at DESC
+	`, since)
+}
+
+func (p *Postgres) generalActivity(ctx context.Context, query string, since time.Time) ([]GeneralActivity, error) {
+	rows, err := p.pool.Query(ctx, query, since)
+	if err != nil {
+		return nil, fmt.Errorf("query general activity: %w", err)
+	}
+	defer rows.Close()
+
+	out := []GeneralActivity{}
+	for rows.Next() {
+		var g GeneralActivity
+		if err := rows.Scan(&g.Board, &g.ThreadSubject, &g.Replies); err != nil {
+			return nil, fmt.Errorf("scan general activity: %w", err)
+		}
+		out = append(out, g)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate general activity: %w", err)
+	}
+
+	return out, nil
+}
+
+// NarrativeSummary is one generated prose summary of a trailing time
+// window (window is "hour", "day", or "week").
+type NarrativeSummary struct {
+	Window       string    `json:"window"`
+	PeriodStart  time.Time `json:"periodStart"`
+	PeriodEnd    time.Time `json:"periodEnd"`
+	FindingCount int       `json:"findingCount"`
+	Summary      string    `json:"summary"`
+	GeneratedAt  time.Time `json:"generatedAt"`
+}
+
+// narrativeWindowOrder is the canonical hour/day/week ordering for
+// LatestNarrativeSummaries' response — not alphabetical, which "day" <
+// "hour" < "week" would otherwise produce.
+var narrativeWindowOrder = []string{"hour", "day", "week"}
+
+// LatestNarrativeSummaries returns the most recently generated summary
+// for each window that has at least one, in hour/day/week order.
+func (p *Postgres) LatestNarrativeSummaries(ctx context.Context) ([]NarrativeSummary, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT DISTINCT ON (window_label) window_label, period_start, period_end, finding_count, summary, generated_at
+		FROM narrative_summaries
+		ORDER BY window_label, generated_at DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query narrative summaries: %w", err)
+	}
+	defer rows.Close()
+
+	byWindow := map[string]NarrativeSummary{}
+	for rows.Next() {
+		var s NarrativeSummary
+		if err := rows.Scan(&s.Window, &s.PeriodStart, &s.PeriodEnd, &s.FindingCount, &s.Summary, &s.GeneratedAt); err != nil {
+			return nil, fmt.Errorf("scan narrative summary: %w", err)
+		}
+		byWindow[s.Window] = s
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate narrative summaries: %w", err)
+	}
+
+	out := []NarrativeSummary{}
+	for _, w := range narrativeWindowOrder {
+		if s, ok := byWindow[w]; ok {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
+// SaveNarrativeSummary persists one generated summary. Append-only, like
+// SavePollCycle — not part of libstore.Store since only the standalone
+// summarizer binary calls this, never the poller.
+func (p *Postgres) SaveNarrativeSummary(ctx context.Context, s NarrativeSummary) error {
+	_, err := p.pool.Exec(ctx, `
+		INSERT INTO narrative_summaries (window_label, period_start, period_end, finding_count, summary)
+		VALUES ($1, $2, $3, $4, $5)
+	`, s.Window, s.PeriodStart, s.PeriodEnd, s.FindingCount, s.Summary)
+	if err != nil {
+		return fmt.Errorf("insert narrative_summary: %w", err)
+	}
+	return nil
+}
