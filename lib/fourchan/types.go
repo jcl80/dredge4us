@@ -58,3 +58,17 @@ type Post struct {
 
 // PostTime returns the post's timestamp.
 func (p Post) PostTime() time.Time { return time.Unix(p.Time, 0).UTC() }
+
+// BoardsIndex is the response from GET /boards.json — the full list of
+// boards 4chan currently serves, not just the ones this poller watches.
+type BoardsIndex struct {
+	Boards []Board `json:"boards"`
+}
+
+// Board is one entry in the board index. Only the short code and
+// display title are kept — everything else 4chan returns (posting
+// limits, cooldowns, meta description) is irrelevant here.
+type Board struct {
+	Board string `json:"board"`
+	Title string `json:"title"`
+}

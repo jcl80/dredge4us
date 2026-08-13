@@ -115,3 +115,26 @@ func (c *Client) FetchThread(ctx context.Context, board string, threadNo int, if
 
 	return tr.Posts, resp.Header.Get("Last-Modified"), nil
 }
+
+// FetchBoards fetches the full board index — every board 4chan
+// currently serves. Used for browse/admin UI only; which boards this
+// poller actually watches still comes from config, not this call.
+func (c *Client) FetchBoards(ctx context.Context) ([]Board, error) {
+	url := fmt.Sprintf("%s/boards.json", c.BaseURL)
+	resp, err := c.get(ctx, url, "")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fourchan: boards: unexpected status %d", resp.StatusCode)
+	}
+
+	var idx BoardsIndex
+	if err := json.NewDecoder(resp.Body).Decode(&idx); err != nil {
+		return nil, fmt.Errorf("decode boards: %w", err)
+	}
+
+	return idx.Boards, nil
+}

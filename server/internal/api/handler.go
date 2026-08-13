@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/jcl80/dredge4us/lib/fourchan"
 	"github.com/jcl80/dredge4us/server/internal/store"
 )
 
@@ -29,11 +30,13 @@ type Finder interface {
 
 var _ Finder = (*store.Postgres)(nil)
 
-// New builds the API's HTTP handler.
-func New(finder Finder) http.Handler {
+// New builds the API's HTTP handler. fc serves the /boards/all board
+// index — the only route that talks to 4chan directly instead of Store.
+func New(finder Finder, fc *fourchan.Client) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /findings", findingsHandler(finder))
 	mux.HandleFunc("GET /boards", boardsHandler())
+	mux.HandleFunc("GET /boards/all", allBoardsHandler(fc))
 	mux.HandleFunc("GET /generals", generalsHandler(finder))
 	mux.HandleFunc("GET /kinds", kindsHandler(finder))
 	return withLogging(mux)

@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jcl80/dredge4us/lib/fourchan"
 	"github.com/jcl80/dredge4us/server/internal/api"
 	pgstore "github.com/jcl80/dredge4us/server/internal/store"
 )
@@ -46,7 +47,8 @@ func run() error {
 	}
 	defer pg.Close()
 
-	srv := &http.Server{Addr: addr, Handler: api.New(pg)}
+	fc := fourchan.NewClient(fourchan.NewLimiter())
+	srv := &http.Server{Addr: addr, Handler: api.New(pg, fc)}
 
 	go func() {
 		<-ctx.Done()

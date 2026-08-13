@@ -51,6 +51,24 @@ export async function getBoards(): Promise<string[]> {
   return res.json();
 }
 
+export type BoardStatus = {
+  board: string;
+  title: string;
+  watched: boolean;
+};
+
+// getAllBoards returns every board 4chan currently serves, each tagged
+// with whether this poller watches it — unlike getBoards, which only
+// lists the watched ones.
+export async function getAllBoards(): Promise<BoardStatus[]> {
+  const res = await fetch(`${apiBase()}/boards/all`, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`all-boards request failed: ${res.status}`);
+  }
+
+  return res.json();
+}
+
 // getKinds returns the distinct finding kinds present, optionally
 // scoped to board — spans every detector (regex kinds like
 // "github_url", LLM classes like "ARTIFACT_DROP") and grows as
