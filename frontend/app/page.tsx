@@ -85,9 +85,9 @@ export default async function Home(props: PageProps<"/">) {
                       {f.kind}
                     </span>
                   </td>
-                  <td className="max-w-md truncate px-4 py-2 text-xs">
+                  <td className="max-w-md px-4 py-2 text-xs">
                     {f.matchedValue ? (
-                      <span className="font-mono">
+                      <span className="block truncate font-mono">
                         {isLinkable(f.matchedValue) ? (
                           <a
                             href={f.matchedValue}
@@ -105,8 +105,15 @@ export default async function Home(props: PageProps<"/">) {
                       <span className="italic text-zinc-500">{f.note}</span>
                     )}
                   </td>
-                  <td className="max-w-xs truncate px-4 py-2">
-                    {f.threadSubject || `#${f.threadNo}`}
+                  <td className="max-w-xs px-4 py-2">
+                    <a
+                      href={`https://boards.4chan.org/${f.board}/thread/${f.threadNo}#p${f.postNo}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:underline"
+                    >
+                      {f.threadSubject || `#${f.threadNo}`}
+                    </a>
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap text-zinc-600 dark:text-zinc-400">
                     {timeAgo(f.foundAt)}
