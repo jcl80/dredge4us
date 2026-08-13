@@ -23,10 +23,10 @@ run-poller:
 	set -a && source .env && set +a && cd server && go run ./cmd/poller
 
 docker-build-api:
-	docker build --build-arg CMD=api -t dredge4us-api .
+	docker build -t dredge4us-api .
 
 docker-build-poller:
-	docker build --build-arg CMD=poller -t dredge4us-poller .
+	docker build -f Dockerfile.poller -t dredge4us-poller .
 
 # Deploys happen by pushing to main — see .do/app.yaml. The app itself is
 # created once through the App Platform console (New App > GitHub repo >

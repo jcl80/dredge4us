@@ -26,3 +26,21 @@ services:
       - key: DATABASE_URL
         type: SECRET
         value: "EDIT_ME_IN_DO_CONSOLE"
+
+workers:
+  - name: poller
+    github:
+      repo: jcl80/dredge4us
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: Dockerfile.poller
+    source_dir: /
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    envs:
+      - key: DATABASE_URL
+        type: SECRET
+        value: "EDIT_ME_IN_DO_CONSOLE"
+      - key: POLLER_BOARDS
+        type: GENERAL
+        value: "g:20s,sci:20s,diy:20s,3:20s"
