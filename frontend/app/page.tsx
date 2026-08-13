@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getBoards, getFindings, getKinds } from "./findings";
-import { pillClass, timeAgo } from "./ui";
+import { kindBadgeClass, pillClass, timeAgo } from "./ui";
 
 function isLinkable(value: string): boolean {
   return value.startsWith("http://") || value.startsWith("https://") || value.startsWith("magnet:");
@@ -80,7 +80,11 @@ export default async function Home(props: PageProps<"/">) {
                   className="border-t border-black/[.08] dark:border-white/[.145]"
                 >
                   <td className="px-4 py-2 whitespace-nowrap">/{f.board}/</td>
-                  <td className="px-4 py-2 whitespace-nowrap">{f.kind}</td>
+                  <td className="px-4 py-2 whitespace-nowrap">
+                    <span className={`rounded px-2 py-0.5 text-xs font-medium ${kindBadgeClass(f.kind)}`}>
+                      {f.kind}
+                    </span>
+                  </td>
                   <td className="max-w-md truncate px-4 py-2 text-xs">
                     {f.matchedValue ? (
                       <span className="font-mono">

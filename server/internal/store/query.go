@@ -96,7 +96,8 @@ func (p *Postgres) ListKinds(ctx context.Context, board string) ([]string, error
 }
 
 // GeneralLineage is one general's current state: its latest known
-// thread instance, plus how many instances that lineage has had.
+// thread instance, how many instances that lineage has had, and the
+// distinct finding kinds tied to its current thread (empty if none).
 type GeneralLineage struct {
 	Board         string     `json:"board"`
 	SubjectKey    string     `json:"subjectKey"`
@@ -107,11 +108,13 @@ type GeneralLineage struct {
 	EndedAt       *time.Time `json:"endedAt"`
 	InstanceCount int        `json:"instanceCount"`
 	FirstSeenAt   time.Time  `json:"firstSeenAt"`
+	FindingKinds  []string   `json:"findingKinds"`
 }
 
 // ListGenerals returns one row per general lineage tracked for board —
 // the most recent thread instance in each (board, subject_key) group —
-// most recently active first.
+// most recently active first. FindingKinds only reflects findings tied
+// to that current thread, not the lineage's earlier instances.
 func (p *Postgres) ListGenerals(ctx context.Context, board string) ([]GeneralLineage, error) {
 	rows, err := p.pool.Query(ctx, `
 		WITH ranked AS (
@@ -122,11 +125,19 @@ func (p *Postgres) ListGenerals(ctx context.Context, board string) ([]GeneralLin
 				MIN(first_seen_at) OVER (PARTITION BY subject_key) AS lineage_first_seen_at
 			FROM general_threads
 			WHERE board = $1
+		),
+		current AS (
+			SELECT * FROM ranked WHERE rn = 1
 		)
-		SELECT board, subject_key, thread_no, thread_subject, replies, last_seen_at, ended_at, instance_count, lineage_first_seen_at
-		FROM ranked
-		WHERE rn = 1
-		ORDER BY last_seen_at DESC
+		SELECT
+			c.board, c.subject_key, c.thread_no, c.thread_subject, c.replies, c.last_seen_at, c.ended_at,
+			c.instance_count, c.lineage_first_seen_at,
+			COALESCE(array_agg(DISTINCT f.kind) FILTER (WHERE f.kind IS NOT NULL), '{}')
+		FROM current c
+		LEFT JOIN findings f ON f.board = c.board AND f.thread_no = c.thread_no
+		GROUP BY c.board, c.subject_key, c.thread_no, c.thread_subject, c.replies, c.last_seen_at, c.ended_at,
+			c.instance_count, c.lineage_first_seen_at
+		ORDER BY c.last_seen_at DESC
 	`, board)
 	if err != nil {
 		return nil, fmt.Errorf("query general_threads: %w", err)
@@ -138,7 +149,7 @@ func (p *Postgres) ListGenerals(ctx context.Context, board string) ([]GeneralLin
 		var g GeneralLineage
 		if err := rows.Scan(
 			&g.Board, &g.SubjectKey, &g.ThreadNo, &g.ThreadSubject, &g.Replies,
-			&g.LastSeenAt, &g.EndedAt, &g.InstanceCount, &g.FirstSeenAt,
+			&g.LastSeenAt, &g.EndedAt, &g.InstanceCount, &g.FirstSeenAt, &g.FindingKinds,
 		); err != nil {
 			return nil, fmt.Errorf("scan general_thread: %w", err)
 		}

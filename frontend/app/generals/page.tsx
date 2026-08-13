@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getBoards, getGenerals } from "../findings";
-import { pillClass, timeAgo } from "../ui";
+import { kindBadgeClass, pillClass, timeAgo } from "../ui";
 
 export default async function GeneralsPage(props: PageProps<"/generals">) {
   const searchParams = await props.searchParams;
@@ -38,6 +38,7 @@ export default async function GeneralsPage(props: PageProps<"/generals">) {
             <thead className="bg-black/[.03] dark:bg-white/[.04]">
               <tr>
                 <th className="px-4 py-2 font-medium">Subject</th>
+                <th className="px-4 py-2 font-medium">Findings</th>
                 <th className="px-4 py-2 font-medium">Status</th>
                 <th className="px-4 py-2 font-medium">Replies</th>
                 <th className="px-4 py-2 font-medium">Instances</th>
@@ -60,6 +61,22 @@ export default async function GeneralsPage(props: PageProps<"/generals">) {
                       {g.threadSubject}
                     </a>
                   </td>
+                  <td className="px-4 py-2">
+                    {g.findingKinds.length === 0 ? (
+                      <span className="text-zinc-400">&mdash;</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {g.findingKinds.map((k) => (
+                          <span
+                            key={k}
+                            className={`rounded px-2 py-0.5 text-xs font-medium ${kindBadgeClass(k)}`}
+                          >
+                            {k}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-2 whitespace-nowrap">
                     {g.endedAt ? (
                       <span className="text-zinc-500">ended</span>
@@ -79,7 +96,7 @@ export default async function GeneralsPage(props: PageProps<"/generals">) {
               ))}
               {generals.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
+                  <td colSpan={6} className="px-4 py-8 text-center text-zinc-500">
                     No generals tracked yet{board ? ` for /${board}/` : ""}.
                   </td>
                 </tr>

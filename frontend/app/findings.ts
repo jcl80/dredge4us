@@ -79,6 +79,7 @@ export type GeneralLineage = {
   endedAt: string | null;
   instanceCount: number;
   firstSeenAt: string;
+  findingKinds: string[];
 };
 
 // getGenerals returns the general-thread lineages tracked for board —
