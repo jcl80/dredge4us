@@ -31,6 +31,7 @@ var _ Finder = (*store.Postgres)(nil)
 func New(finder Finder) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /findings", findingsHandler(finder))
+	mux.HandleFunc("GET /boards", boardsHandler())
 	return withLogging(mux)
 }
 

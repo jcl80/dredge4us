@@ -1,4 +1,5 @@
-import { getFindings } from "./findings";
+import Link from "next/link";
+import { getBoards, getFindings } from "./findings";
 
 function isLinkable(value: string): boolean {
   return value.startsWith("http://") || value.startsWith("https://") || value.startsWith("magnet:");
@@ -14,8 +15,23 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-export default async function Home() {
-  const findings = await getFindings();
+function boardHref(board?: string): string {
+  return board ? `/?board=${board}` : "/";
+}
+
+function pillClass(active: boolean): string {
+  return `rounded-full px-3 py-1 ${
+    active
+      ? "bg-black text-white dark:bg-white dark:text-black"
+      : "bg-black/[.05] dark:bg-white/[.08]"
+  }`;
+}
+
+export default async function Home(props: PageProps<"/">) {
+  const searchParams = await props.searchParams;
+  const board = typeof searchParams.board === "string" ? searchParams.board : undefined;
+
+  const [boards, findings] = await Promise.all([getBoards(), getFindings(board)]);
 
   return (
     <div className="flex-1 bg-zinc-50 dark:bg-black">
@@ -26,6 +42,17 @@ export default async function Home() {
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
           {findings.length} most recent artifact detections.
         </p>
+
+        <nav className="mt-4 flex flex-wrap gap-2 text-sm">
+          <Link href={boardHref()} className={pillClass(!board)}>
+            All
+          </Link>
+          {boards.map((b) => (
+            <Link key={b} href={boardHref(b)} className={pillClass(board === b)}>
+              /{b}/
+            </Link>
+          ))}
+        </nav>
 
         <div className="mt-6 overflow-x-auto rounded-lg border border-black/[.08] dark:border-white/[.145]">
           <table className="w-full text-left text-sm">

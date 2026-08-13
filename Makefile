@@ -1,4 +1,6 @@
-.PHONY: lint build-api build-poller docker-build-api docker-build-poller deploy-api
+SHELL := /bin/bash
+
+.PHONY: lint build-api build-poller docker-build-api docker-build-poller run-api run-poller
 
 lint:
 	@fail=0; \
@@ -12,20 +14,20 @@ build-api:
 build-poller:
 	cd server && go build -o ../bin/poller ./cmd/poller
 
+# Reads DATABASE_URL (and friends) from the repo-root .env. Port matches
+# what frontend/.env.local expects API_BASE_URL to be.
+run-api:
+	set -a && source .env && set +a && cd server && API_ADDR=:8090 go run ./cmd/api
+
+run-poller:
+	set -a && source .env && set +a && cd server && go run ./cmd/poller
+
 docker-build-api:
 	docker build --build-arg CMD=api -t dredge4us-api .
 
 docker-build-poller:
 	docker build --build-arg CMD=poller -t dredge4us-poller .
 
-# First deploy:      make deploy-api
-# Update an app:     make deploy-api APP_ID=<id from `doctl apps list`>
-# Requires doctl authenticated (`doctl auth init`). Never put the real
-# DATABASE_URL in .do/app.yaml — set it in the App Platform console after
-# the first deploy. See .do/app.yaml for details.
-deploy-api:
-ifdef APP_ID
-	doctl apps update $(APP_ID) --spec .do/app.yaml
-else
-	doctl apps create --spec .do/app.yaml
-endif
+# Deploys happen by pushing to main — see .do/app.yaml. The app itself is
+# created once through the App Platform console (New App > GitHub repo >
+# Dockerfile); deploy_on_push handles every push after that.

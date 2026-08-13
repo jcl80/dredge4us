@@ -1,18 +1,12 @@
-# DigitalOcean App Platform spec for server/cmd/api.
+# DigitalOcean App Platform spec for server/cmd/api. Documents the
+# config to enter in the App Platform console (New App > GitHub repo >
+# Dockerfile) when creating the app the first time. deploy_on_push below
+# means every push to main redeploys automatically after that — no
+# terminal, no CLI.
 #
-# NEVER put the real DATABASE_URL value in this file — DO encrypts SECRET
-# env values after first submission, but the plaintext would still hit
-# git history on the way in. Set the real value through the App Platform
-# console (Settings > App-Level Environment Variables) after first
-# deploy, or pass it out-of-band with `doctl apps update`:
-#
-#   doctl apps update <APP_ID> --spec .do/app.yaml
-#
-# First deploy:
-#
-#   doctl apps create --spec .do/app.yaml
-#   # then set DATABASE_URL for real in the console — the placeholder
-#   # below is intentionally not a working value.
+# NEVER put the real DATABASE_URL value in this file — set it through
+# the console (Settings > App-Level Environment Variables) after the app
+# exists. The placeholder below is intentionally not a working value.
 
 name: dredge4us-api
 region: nyc
