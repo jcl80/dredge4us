@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -103,6 +104,38 @@ func (p *Postgres) SavePollCycle(ctx context.Context, c libstore.PollCycle) erro
 	`, c.Board, c.StartedAt, c.ThreadsSeen, c.ThreadsNew, c.ThreadsChanged, c.ThreadsGone, c.Requests, c.NotModified, c.Errors)
 	if err != nil {
 		return fmt.Errorf("insert poll_cycle: %w", err)
+	}
+	return nil
+}
+
+// UpsertGeneralThread implements libstore.Store. first_seen_at is only
+// ever set on insert — the ON CONFLICT branch deliberately leaves it
+// untouched so it keeps reflecting when this thread instance first
+// appeared.
+func (p *Postgres) UpsertGeneralThread(ctx context.Context, g libstore.GeneralThread) error {
+	_, err := p.pool.Exec(ctx, `
+		INSERT INTO general_threads
+			(board, subject_key, thread_no, thread_subject, replies, first_seen_at, last_seen_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $6)
+		ON CONFLICT (board, thread_no) DO UPDATE SET
+			thread_subject = EXCLUDED.thread_subject,
+			replies = EXCLUDED.replies,
+			last_seen_at = EXCLUDED.last_seen_at
+	`, g.Board, g.SubjectKey, g.ThreadNo, g.ThreadSubject, g.Replies, g.SeenAt)
+	if err != nil {
+		return fmt.Errorf("upsert general_thread: %w", err)
+	}
+	return nil
+}
+
+// EndGeneralThread implements libstore.Store.
+func (p *Postgres) EndGeneralThread(ctx context.Context, board string, threadNo int, endedAt time.Time) error {
+	_, err := p.pool.Exec(ctx, `
+		UPDATE general_threads SET ended_at = $3
+		WHERE board = $1 AND thread_no = $2 AND ended_at IS NULL
+	`, board, threadNo, endedAt)
+	if err != nil {
+		return fmt.Errorf("end general_thread: %w", err)
 	}
 	return nil
 }

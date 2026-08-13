@@ -23,6 +23,7 @@ const (
 // Finder is the read surface this package needs from storage.
 type Finder interface {
 	ListFindings(ctx context.Context, q store.FindingsQuery) ([]store.FindingRecord, error)
+	ListGenerals(ctx context.Context, board string) ([]store.GeneralLineage, error)
 }
 
 var _ Finder = (*store.Postgres)(nil)
@@ -32,6 +33,7 @@ func New(finder Finder) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /findings", findingsHandler(finder))
 	mux.HandleFunc("GET /boards", boardsHandler())
+	mux.HandleFunc("GET /generals", generalsHandler(finder))
 	return withLogging(mux)
 }
 

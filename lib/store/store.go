@@ -25,6 +25,19 @@ type PollCycle struct {
 	Errors         int
 }
 
+// GeneralThread is one physical thread instance recognized as a
+// "general" (see lib/general). SeenAt is when this cycle observed it —
+// implementations preserve the original first-seen time across updates
+// to the same (Board, ThreadNo).
+type GeneralThread struct {
+	Board         string
+	SubjectKey    string
+	ThreadNo      int
+	ThreadSubject string
+	Replies       int
+	SeenAt        time.Time
+}
+
 // Store is everything the poll loop needs persisted.
 type Store interface {
 	// LastModified returns the previously stored Last-Modified header for
@@ -42,4 +55,12 @@ type Store interface {
 
 	// SavePollCycle persists one cycle's stats.
 	SavePollCycle(ctx context.Context, cycle PollCycle) error
+
+	// UpsertGeneralThread records or updates a single general thread
+	// instance, keyed on (Board, ThreadNo).
+	UpsertGeneralThread(ctx context.Context, g GeneralThread) error
+
+	// EndGeneralThread marks a tracked general thread instance as ended
+	// — the thread went gone from the catalog.
+	EndGeneralThread(ctx context.Context, board string, threadNo int, endedAt time.Time) error
 }

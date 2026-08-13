@@ -17,6 +17,7 @@ import (
 	"github.com/jcl80/dredge4us/lib/detect"
 	"github.com/jcl80/dredge4us/lib/diff"
 	"github.com/jcl80/dredge4us/lib/fourchan"
+	"github.com/jcl80/dredge4us/lib/general"
 	libstore "github.com/jcl80/dredge4us/lib/store"
 	"github.com/jcl80/dredge4us/server/internal/config"
 )
@@ -116,6 +117,8 @@ func (s *Scheduler) runCycle(ctx context.Context, board string, prev map[int]fou
 	stats.ThreadsChanged = len(change.Changed)
 	stats.ThreadsGone = len(change.Gone)
 
+	s.trackGenerals(ctx, board, change, prev, stats.StartedAt)
+
 	toFetch := make([]fourchan.Thread, 0, len(change.New)+len(change.Changed))
 	toFetch = append(toFetch, change.New...)
 	toFetch = append(toFetch, change.Changed...)
@@ -129,6 +132,43 @@ func (s *Scheduler) runCycle(ctx context.Context, board string, prev map[int]fou
 
 	s.finishCycle(ctx, stats)
 	return curr
+}
+
+// trackGenerals updates general_threads for any new/changed thread
+// whose subject matches the general heuristic, and marks tracked
+// generals as ended once their thread goes gone. Runs on catalog data
+// alone — no extra HTTP requests beyond the catalog fetch already done.
+func (s *Scheduler) trackGenerals(ctx context.Context, board string, change diff.Change, prev map[int]fourchan.Thread, seenAt time.Time) {
+	candidates := make([]fourchan.Thread, 0, len(change.New)+len(change.Changed))
+	candidates = append(candidates, change.New...)
+	candidates = append(candidates, change.Changed...)
+
+	for _, t := range candidates {
+		if !general.IsGeneral(t.Sub) {
+			continue
+		}
+		g := libstore.GeneralThread{
+			Board:         board,
+			SubjectKey:    general.NormalizeSubject(t.Sub),
+			ThreadNo:      t.No,
+			ThreadSubject: t.Sub,
+			Replies:       t.Replies,
+			SeenAt:        seenAt,
+		}
+		if err := s.Store.UpsertGeneralThread(ctx, g); err != nil {
+			slog.Error("upsert general thread failed", "board", board, "thread", t.No, "error", err)
+		}
+	}
+
+	for _, no := range change.Gone {
+		t, ok := prev[no]
+		if !ok || !general.IsGeneral(t.Sub) {
+			continue
+		}
+		if err := s.Store.EndGeneralThread(ctx, board, no, seenAt); err != nil {
+			slog.Error("end general thread failed", "board", board, "thread", no, "error", err)
+		}
+	}
 }
 
 // fetchAndDetect fans toFetch out across the worker pool. Every fetch

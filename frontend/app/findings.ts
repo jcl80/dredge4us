@@ -12,7 +12,7 @@ export type Finding = {
   foundAt: string;
 };
 
-function apiBase(): string {
+export function apiBase(): string {
   const base = process.env.API_BASE_URL;
   if (!base) {
     throw new Error("API_BASE_URL is not set");
@@ -42,6 +42,31 @@ export async function getBoards(): Promise<string[]> {
   const res = await fetch(`${apiBase()}/boards`, { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`boards request failed: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export type GeneralLineage = {
+  board: string;
+  subjectKey: string;
+  threadNo: number;
+  threadSubject: string;
+  replies: number;
+  lastSeenAt: string;
+  endedAt: string | null;
+  instanceCount: number;
+  firstSeenAt: string;
+};
+
+// getGenerals returns the general-thread lineages tracked for board —
+// see lib/general on the Go side for the detection/stitching heuristic.
+export async function getGenerals(board: string): Promise<GeneralLineage[]> {
+  const res = await fetch(`${apiBase()}/generals?board=${encodeURIComponent(board)}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`generals request failed: ${res.status}`);
   }
 
   return res.json();

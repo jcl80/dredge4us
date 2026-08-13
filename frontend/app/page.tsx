@@ -1,30 +1,13 @@
 import Link from "next/link";
 import { getBoards, getFindings } from "./findings";
+import { pillClass, timeAgo } from "./ui";
 
 function isLinkable(value: string): boolean {
   return value.startsWith("http://") || value.startsWith("https://") || value.startsWith("magnet:");
 }
 
-function timeAgo(iso: string): string {
-  const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
 function boardHref(board?: string): string {
   return board ? `/?board=${board}` : "/";
-}
-
-function pillClass(active: boolean): string {
-  return `rounded-full px-3 py-1 ${
-    active
-      ? "bg-black text-white dark:bg-white dark:text-black"
-      : "bg-black/[.05] dark:bg-white/[.08]"
-  }`;
 }
 
 export default async function Home(props: PageProps<"/">) {
@@ -36,9 +19,14 @@ export default async function Home(props: PageProps<"/">) {
   return (
     <div className="flex-1 bg-zinc-50 dark:bg-black">
       <main className="mx-auto max-w-5xl px-6 py-10">
-        <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
-          Findings
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
+            Findings
+          </h1>
+          <Link href="/generals" className="text-sm text-zinc-600 hover:underline dark:text-zinc-400">
+            Generals &rarr;
+          </Link>
+        </div>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
           {findings.length} most recent artifact detections.
         </p>

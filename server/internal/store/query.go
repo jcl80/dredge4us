@@ -64,3 +64,59 @@ func (p *Postgres) ListFindings(ctx context.Context, q FindingsQuery) ([]Finding
 
 	return out, nil
 }
+
+// GeneralLineage is one general's current state: its latest known
+// thread instance, plus how many instances that lineage has had.
+type GeneralLineage struct {
+	Board         string     `json:"board"`
+	SubjectKey    string     `json:"subjectKey"`
+	ThreadNo      int64      `json:"threadNo"`
+	ThreadSubject string     `json:"threadSubject"`
+	Replies       int        `json:"replies"`
+	LastSeenAt    time.Time  `json:"lastSeenAt"`
+	EndedAt       *time.Time `json:"endedAt"`
+	InstanceCount int        `json:"instanceCount"`
+	FirstSeenAt   time.Time  `json:"firstSeenAt"`
+}
+
+// ListGenerals returns one row per general lineage tracked for board —
+// the most recent thread instance in each (board, subject_key) group —
+// most recently active first.
+func (p *Postgres) ListGenerals(ctx context.Context, board string) ([]GeneralLineage, error) {
+	rows, err := p.pool.Query(ctx, `
+		WITH ranked AS (
+			SELECT
+				board, subject_key, thread_no, thread_subject, replies, last_seen_at, ended_at,
+				ROW_NUMBER() OVER (PARTITION BY subject_key ORDER BY first_seen_at DESC) AS rn,
+				COUNT(*) OVER (PARTITION BY subject_key) AS instance_count,
+				MIN(first_seen_at) OVER (PARTITION BY subject_key) AS lineage_first_seen_at
+			FROM general_threads
+			WHERE board = $1
+		)
+		SELECT board, subject_key, thread_no, thread_subject, replies, last_seen_at, ended_at, instance_count, lineage_first_seen_at
+		FROM ranked
+		WHERE rn = 1
+		ORDER BY last_seen_at DESC
+	`, board)
+	if err != nil {
+		return nil, fmt.Errorf("query general_threads: %w", err)
+	}
+	defer rows.Close()
+
+	var out []GeneralLineage
+	for rows.Next() {
+		var g GeneralLineage
+		if err := rows.Scan(
+			&g.Board, &g.SubjectKey, &g.ThreadNo, &g.ThreadSubject, &g.Replies,
+			&g.LastSeenAt, &g.EndedAt, &g.InstanceCount, &g.FirstSeenAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan general_thread: %w", err)
+		}
+		out = append(out, g)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate general_threads: %w", err)
+	}
+
+	return out, nil
+}
