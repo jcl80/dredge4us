@@ -7,6 +7,7 @@ export type Finding = {
   detector: string;
   kind: string;
   matchedValue: string;
+  note: string | null;
   threadSubject: string;
   threadReplies: number;
   foundAt: string;
@@ -22,11 +23,14 @@ export function apiBase(): string {
 
 // getFindings calls the poller's read-only API server-side. API_BASE_URL
 // is not NEXT_PUBLIC_-prefixed on purpose — the browser never talks to
-// that API directly. board is omitted to mean "all boards".
-export async function getFindings(board?: string): Promise<Finding[]> {
+// that API directly. board/kind are omitted to mean "no filter".
+export async function getFindings(board?: string, kind?: string): Promise<Finding[]> {
   const params = new URLSearchParams({ limit: "100" });
   if (board) {
     params.set("board", board);
+  }
+  if (kind) {
+    params.set("kind", kind);
   }
 
   const res = await fetch(`${apiBase()}/findings?${params}`, { cache: "no-store" });
@@ -42,6 +46,24 @@ export async function getBoards(): Promise<string[]> {
   const res = await fetch(`${apiBase()}/boards`, { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`boards request failed: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+// getKinds returns the distinct finding kinds present, optionally
+// scoped to board — spans every detector (regex kinds like
+// "github_url", LLM classes like "ARTIFACT_DROP") and grows as
+// detectors are added, so this is a live query, not a hardcoded list.
+export async function getKinds(board?: string): Promise<string[]> {
+  const params = new URLSearchParams();
+  if (board) {
+    params.set("board", board);
+  }
+
+  const res = await fetch(`${apiBase()}/kinds?${params}`, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`kinds request failed: ${res.status}`);
   }
 
   return res.json();

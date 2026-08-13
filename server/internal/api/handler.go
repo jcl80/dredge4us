@@ -24,6 +24,7 @@ const (
 type Finder interface {
 	ListFindings(ctx context.Context, q store.FindingsQuery) ([]store.FindingRecord, error)
 	ListGenerals(ctx context.Context, board string) ([]store.GeneralLineage, error)
+	ListKinds(ctx context.Context, board string) ([]string, error)
 }
 
 var _ Finder = (*store.Postgres)(nil)
@@ -34,6 +35,7 @@ func New(finder Finder) http.Handler {
 	mux.HandleFunc("GET /findings", findingsHandler(finder))
 	mux.HandleFunc("GET /boards", boardsHandler())
 	mux.HandleFunc("GET /generals", generalsHandler(finder))
+	mux.HandleFunc("GET /kinds", kindsHandler(finder))
 	return withLogging(mux)
 }
 

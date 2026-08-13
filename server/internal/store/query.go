@@ -18,6 +18,7 @@ type FindingRecord struct {
 	Detector      string    `json:"detector"`
 	Kind          string    `json:"kind"`
 	MatchedValue  string    `json:"matchedValue"`
+	Note          *string   `json:"note"`
 	ThreadSubject string    `json:"threadSubject"`
 	ThreadReplies int       `json:"threadReplies"`
 	FoundAt       time.Time `json:"foundAt"`
@@ -35,7 +36,7 @@ type FindingsQuery struct {
 // ListFindings returns the most recent findings matching q, newest first.
 func (p *Postgres) ListFindings(ctx context.Context, q FindingsQuery) ([]FindingRecord, error) {
 	rows, err := p.pool.Query(ctx, `
-		SELECT id, board, thread_no, post_no, post_time, detector, kind, matched_value, thread_subject, thread_replies, found_at
+		SELECT id, board, thread_no, post_no, post_time, detector, kind, matched_value, note, thread_subject, thread_replies, found_at
 		FROM findings
 		WHERE ($1 = '' OR board = $1)
 		  AND ($2 = '' OR kind = $2)
@@ -52,7 +53,7 @@ func (p *Postgres) ListFindings(ctx context.Context, q FindingsQuery) ([]Finding
 		var f FindingRecord
 		if err := rows.Scan(
 			&f.ID, &f.Board, &f.ThreadNo, &f.PostNo, &f.PostTime,
-			&f.Detector, &f.Kind, &f.MatchedValue, &f.ThreadSubject, &f.ThreadReplies, &f.FoundAt,
+			&f.Detector, &f.Kind, &f.MatchedValue, &f.Note, &f.ThreadSubject, &f.ThreadReplies, &f.FoundAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan finding: %w", err)
 		}
@@ -60,6 +61,35 @@ func (p *Postgres) ListFindings(ctx context.Context, q FindingsQuery) ([]Finding
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate findings: %w", err)
+	}
+
+	return out, nil
+}
+
+// ListKinds returns the distinct finding kinds present, optionally
+// scoped to board ("" means all boards). Dynamic rather than hardcoded
+// since kinds span multiple detectors and grow as detectors are added.
+func (p *Postgres) ListKinds(ctx context.Context, board string) ([]string, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT DISTINCT kind FROM findings
+		WHERE ($1 = '' OR board = $1)
+		ORDER BY kind
+	`, board)
+	if err != nil {
+		return nil, fmt.Errorf("query kinds: %w", err)
+	}
+	defer rows.Close()
+
+	var out []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, fmt.Errorf("scan kind: %w", err)
+		}
+		out = append(out, k)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate kinds: %w", err)
 	}
 
 	return out, nil

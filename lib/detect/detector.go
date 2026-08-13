@@ -9,7 +9,9 @@ import (
 	"github.com/jcl80/dredge4us/lib/fourchan"
 )
 
-// Finding is the only artifact a Detector may produce.
+// Finding is the only artifact a Detector may produce. Note is optional
+// detector-supplied rationale — distinct from MatchedValue, which stays
+// URL/hash only, never prose.
 type Finding struct {
 	Board         string
 	ThreadNo      int
@@ -18,6 +20,7 @@ type Finding struct {
 	Detector      string
 	Kind          string
 	MatchedValue  string
+	Note          string
 	ThreadSubject string
 	ThreadReplies int
 }

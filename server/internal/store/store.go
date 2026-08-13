@@ -78,10 +78,10 @@ func (p *Postgres) SaveFindings(ctx context.Context, findings []detect.Finding) 
 	for _, f := range findings {
 		batch.Queue(`
 			INSERT INTO findings
-				(board, thread_no, post_no, post_time, detector, kind, matched_value, thread_subject, thread_replies)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+				(board, thread_no, post_no, post_time, detector, kind, matched_value, note, thread_subject, thread_replies)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 			ON CONFLICT (board, post_no, kind, matched_value) DO NOTHING
-		`, f.Board, f.ThreadNo, f.PostNo, f.PostTime, f.Detector, f.Kind, f.MatchedValue, f.ThreadSubject, f.ThreadReplies)
+		`, f.Board, f.ThreadNo, f.PostNo, f.PostTime, f.Detector, f.Kind, f.MatchedValue, nullableText(f.Note), f.ThreadSubject, f.ThreadReplies)
 	}
 
 	br := p.pool.SendBatch(ctx, batch)
@@ -93,6 +93,15 @@ func (p *Postgres) SaveFindings(ctx context.Context, findings []detect.Finding) 
 		}
 	}
 	return nil
+}
+
+// nullableText converts "" to NULL — detectors that don't set Note
+// shouldn't produce empty-string rows.
+func nullableText(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 // SavePollCycle implements libstore.Store.

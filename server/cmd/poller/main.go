@@ -47,10 +47,16 @@ func run() error {
 	limiter := fourchan.NewLimiter()
 	client := fourchan.NewClient(limiter)
 
+	detectors := []detect.Detector{detect.NewArtifactDetector()}
+	if cfg.OpenAIAPIKey != "" {
+		detectors = append(detectors, detect.NewLLMClassifier(cfg.OpenAIAPIKey, cfg.OpenAIModel))
+		slog.Info("llm classification enabled", "model", cfg.OpenAIModel)
+	}
+
 	sched := &scheduler.Scheduler{
 		Client:    client,
 		Store:     pg,
-		Detectors: []detect.Detector{detect.NewArtifactDetector()},
+		Detectors: detectors,
 		Boards:    cfg.Boards,
 		Workers:   cfg.Workers,
 	}

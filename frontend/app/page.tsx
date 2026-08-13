@@ -1,20 +1,29 @@
 import Link from "next/link";
-import { getBoards, getFindings } from "./findings";
+import { getBoards, getFindings, getKinds } from "./findings";
 import { pillClass, timeAgo } from "./ui";
 
 function isLinkable(value: string): boolean {
   return value.startsWith("http://") || value.startsWith("https://") || value.startsWith("magnet:");
 }
 
-function boardHref(board?: string): string {
-  return board ? `/?board=${board}` : "/";
+function filterHref(board?: string, kind?: string): string {
+  const params = new URLSearchParams();
+  if (board) params.set("board", board);
+  if (kind) params.set("kind", kind);
+  const qs = params.toString();
+  return qs ? `/?${qs}` : "/";
 }
 
 export default async function Home(props: PageProps<"/">) {
   const searchParams = await props.searchParams;
   const board = typeof searchParams.board === "string" ? searchParams.board : undefined;
+  const kind = typeof searchParams.kind === "string" ? searchParams.kind : undefined;
 
-  const [boards, findings] = await Promise.all([getBoards(), getFindings(board)]);
+  const [boards, kinds, findings] = await Promise.all([
+    getBoards(),
+    getKinds(board),
+    getFindings(board, kind),
+  ]);
 
   return (
     <div className="flex-1 bg-zinc-50 dark:bg-black">
@@ -32,12 +41,23 @@ export default async function Home(props: PageProps<"/">) {
         </p>
 
         <nav className="mt-4 flex flex-wrap gap-2 text-sm">
-          <Link href={boardHref()} className={pillClass(!board)}>
+          <Link href={filterHref(undefined, kind)} className={pillClass(!board)}>
             All
           </Link>
           {boards.map((b) => (
-            <Link key={b} href={boardHref(b)} className={pillClass(board === b)}>
+            <Link key={b} href={filterHref(b, kind)} className={pillClass(board === b)}>
               /{b}/
+            </Link>
+          ))}
+        </nav>
+
+        <nav className="mt-2 flex flex-wrap gap-2 text-sm">
+          <Link href={filterHref(board)} className={pillClass(!kind)}>
+            All kinds
+          </Link>
+          {kinds.map((k) => (
+            <Link key={k} href={filterHref(board, k)} className={pillClass(kind === k)}>
+              {k}
             </Link>
           ))}
         </nav>
@@ -48,7 +68,7 @@ export default async function Home(props: PageProps<"/">) {
               <tr>
                 <th className="px-4 py-2 font-medium">Board</th>
                 <th className="px-4 py-2 font-medium">Kind</th>
-                <th className="px-4 py-2 font-medium">Matched value</th>
+                <th className="px-4 py-2 font-medium">Match / note</th>
                 <th className="px-4 py-2 font-medium">Thread</th>
                 <th className="px-4 py-2 font-medium">Found</th>
               </tr>
@@ -61,18 +81,24 @@ export default async function Home(props: PageProps<"/">) {
                 >
                   <td className="px-4 py-2 whitespace-nowrap">/{f.board}/</td>
                   <td className="px-4 py-2 whitespace-nowrap">{f.kind}</td>
-                  <td className="max-w-md truncate px-4 py-2 font-mono text-xs">
-                    {isLinkable(f.matchedValue) ? (
-                      <a
-                        href={f.matchedValue}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="hover:underline"
-                      >
-                        {f.matchedValue}
-                      </a>
+                  <td className="max-w-md truncate px-4 py-2 text-xs">
+                    {f.matchedValue ? (
+                      <span className="font-mono">
+                        {isLinkable(f.matchedValue) ? (
+                          <a
+                            href={f.matchedValue}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:underline"
+                          >
+                            {f.matchedValue}
+                          </a>
+                        ) : (
+                          f.matchedValue
+                        )}
+                      </span>
                     ) : (
-                      f.matchedValue
+                      <span className="italic text-zinc-500">{f.note}</span>
                     )}
                   </td>
                   <td className="max-w-xs truncate px-4 py-2">

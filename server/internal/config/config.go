@@ -11,9 +11,10 @@ import (
 )
 
 const (
-	defaultInterval = 20 * time.Second
-	defaultWorkers  = 2
-	defaultBoards   = "g:20s"
+	defaultInterval    = 20 * time.Second
+	defaultWorkers     = 2
+	defaultBoards      = "g:20s"
+	defaultOpenAIModel = "gpt-5.5"
 )
 
 // Board is one watched board and how often to poll its catalog.
@@ -24,16 +25,20 @@ type Board struct {
 
 // Config is the poller's full runtime configuration.
 type Config struct {
-	DatabaseURL string
-	Boards      []Board
-	Workers     int
+	DatabaseURL  string
+	Boards       []Board
+	Workers      int
+	OpenAIAPIKey string
+	OpenAIModel  string
 }
 
 // Load reads Config from the environment:
 //
-//	DATABASE_URL   postgres connection string (required)
-//	POLLER_BOARDS  comma-separated board:interval pairs, e.g. "g:20s" (default "g:20s")
-//	POLLER_WORKERS worker pool size (default 2)
+//	DATABASE_URL    postgres connection string (required)
+//	POLLER_BOARDS   comma-separated board:interval pairs, e.g. "g:20s" (default "g:20s")
+//	POLLER_WORKERS  worker pool size (default 2)
+//	OPENAI_API_KEY  enables LLM thread classification when set (optional)
+//	OPENAI_MODEL    model for classification (default "gpt-5.5")
 func Load() (Config, error) {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
@@ -58,7 +63,18 @@ func Load() (Config, error) {
 		workers = n
 	}
 
-	return Config{DatabaseURL: dbURL, Boards: boards, Workers: workers}, nil
+	openAIModel := os.Getenv("OPENAI_MODEL")
+	if openAIModel == "" {
+		openAIModel = defaultOpenAIModel
+	}
+
+	return Config{
+		DatabaseURL:  dbURL,
+		Boards:       boards,
+		Workers:      workers,
+		OpenAIAPIKey: os.Getenv("OPENAI_API_KEY"),
+		OpenAIModel:  openAIModel,
+	}, nil
 }
 
 func parseBoards(s string) ([]Board, error) {
