@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getBoards, getGenerals } from "../findings";
+import { Navbar } from "../nav";
 import { kindBadgeClass, pillClass, timeAgo } from "../ui";
 
 export default async function GeneralsPage(props: PageProps<"/generals">) {
@@ -12,15 +13,11 @@ export default async function GeneralsPage(props: PageProps<"/generals">) {
 
   return (
     <div className="flex-1 bg-zinc-50 dark:bg-black">
+      <Navbar active="generals" board={board} />
       <main className="mx-auto max-w-5xl px-6 py-10">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
-            Generals
-          </h1>
-          <Link href="/" className="text-sm text-zinc-600 hover:underline dark:text-zinc-400">
-            &larr; Findings
-          </Link>
-        </div>
+        <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
+          Generals
+        </h1>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
           Recurring general threads tracked{board ? ` for /${board}/` : ""}.
         </p>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getBoards, getFindings, getKinds } from "./findings";
+import { Navbar } from "./nav";
 import { kindBadgeClass, pillClass, timeAgo } from "./ui";
 
 function isLinkable(value: string): boolean {
@@ -27,16 +28,19 @@ export default async function Home(props: PageProps<"/">) {
 
   return (
     <div className="flex-1 bg-zinc-50 dark:bg-black">
+      <Navbar active="findings" board={board} />
       <main className="mx-auto max-w-5xl px-6 py-10">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
-            Findings
-          </h1>
-          <Link href="/generals" className="text-sm text-zinc-600 hover:underline dark:text-zinc-400">
-            Generals &rarr;
-          </Link>
+        <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
+          Findings
+        </h1>
+        <div className="mt-3 rounded-lg border border-black/[.08] bg-white px-4 py-3 text-sm text-zinc-700 dark:border-white/[.145] dark:bg-white/[.03] dark:text-zinc-300">
+          dredge4us polls watched 4chan boards in real time and flags posts worth a
+          second look &mdash; leaked artifacts, capability claims, insider tips, and
+          more &mdash; using regex rules and LLM classification. It also tracks
+          recurring &quot;general&quot; threads across reposts, so context survives even
+          after 4chan prunes the original thread.
         </div>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
           {findings.length} most recent artifact detections.
         </p>
 
