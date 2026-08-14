@@ -159,6 +159,43 @@ func (c *Client) FetchThread(ctx context.Context, board string, threadNo int, if
 	return posts, resp.Header.Get("Last-Modified"), nil
 }
 
+// Search fetches one page (25 posts) of a board's search results,
+// newest-first, board-wide — not limited to currently bumped threads
+// the way FetchCatalog is. Unfiltered search caps at 5000 total results
+// (per Meta.TotalFound's max_results, itself returned by the API), so
+// page 1..200 covers the reachable range; requesting beyond that returns
+// an empty page rather than erroring. Returns the page's posts translated
+// to fourchan.Post (grouped by ThreadNo via Post.Resto, same as any
+// other posts slice) and the archive's total matching post count.
+func (c *Client) Search(ctx context.Context, board string, page int) ([]fourchan.Post, int, error) {
+	url := fmt.Sprintf("%s/_/api/chan/search/?boards=%s&page=%d", c.BaseURL, board, page)
+	resp, err := c.get(ctx, url)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, 0, fmt.Errorf("foolfuuka: search %s page %d: unexpected status %d", board, page, resp.StatusCode)
+	}
+
+	var sr apiSearchResponse
+	if err := json.NewDecoder(resp.Body).Decode(&sr); err != nil {
+		return nil, 0, fmt.Errorf("decode search: %w", err)
+	}
+
+	posts := make([]fourchan.Post, 0, len(sr.Page0.Posts))
+	for _, p := range sr.Page0.Posts {
+		post, err := convertPost(p)
+		if err != nil {
+			return nil, 0, err
+		}
+		posts = append(posts, post)
+	}
+
+	return posts, sr.Meta.TotalFound, nil
+}
+
 func convertIndex(idx apiIndexResponse) ([]fourchan.Thread, error) {
 	threads := make([]fourchan.Thread, 0, len(idx))
 	for _, entry := range idx {

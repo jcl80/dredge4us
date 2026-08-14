@@ -51,3 +51,18 @@ type apiThreadEntry struct {
 // must check for that shape before decoding this one — see
 // decodeThreadResponse.
 type apiThreadResponse map[string]apiThreadEntry
+
+// apiSearchResponse is the search endpoint's response
+// (/_/api/chan/search/): a page of posts (board-wide, not grouped by
+// thread — a post's thread_num says which thread it belongs to) plus
+// Meta.TotalFound, the archive's total matching post count. Unlike the
+// board index, this reaches a board's full history, not just currently
+// bumped threads.
+type apiSearchResponse struct {
+	Page0 struct {
+		Posts []apiPost `json:"posts"`
+	} `json:"0"`
+	Meta struct {
+		TotalFound int `json:"total_found"`
+	} `json:"meta"`
+}

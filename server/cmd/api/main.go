@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jcl80/dredge4us/lib/detect"
+	"github.com/jcl80/dredge4us/lib/foolfuuka"
 	"github.com/jcl80/dredge4us/lib/fourchan"
 	"github.com/jcl80/dredge4us/server/internal/api"
 	pgstore "github.com/jcl80/dredge4us/server/internal/store"
@@ -48,7 +50,31 @@ func run() error {
 	defer pg.Close()
 
 	fc := fourchan.NewClient(fourchan.NewLimiter())
-	srv := &http.Server{Addr: addr, Handler: api.New(pg, fc)}
+
+	// One archive client (and Limiter) per host, shared by every board
+	// mapped to it — matches docs/archive-sources.md, same rule the
+	// poller's Sources follows.
+	desu := foolfuuka.NewClient("https://desuarchive.org", fourchan.NewLimiter())
+	palanq := foolfuuka.NewClient("https://archive.palanq.win", fourchan.NewLimiter())
+	backfillBoards := []api.BackfillBoard{
+		{Board: "his", Client: desu},
+		{Board: "k", Client: desu},
+		{Board: "g", Client: desu},
+		{Board: "int", Client: desu},
+		{Board: "news", Client: palanq},
+	}
+
+	detectors := []detect.Detector{detect.NewArtifactDetector()}
+	if apiKey := os.Getenv("OPENAI_API_KEY"); apiKey != "" {
+		model := os.Getenv("OPENAI_MODEL")
+		if model == "" {
+			model = "gpt-5.5"
+		}
+		detectors = append(detectors, detect.NewLLMClassifier(apiKey, model))
+		slog.Info("llm classification enabled for backfill", "model", model)
+	}
+
+	srv := &http.Server{Addr: addr, Handler: api.New(pg, pg, fc, backfillBoards, detectors)}
 
 	go func() {
 		<-ctx.Done()
