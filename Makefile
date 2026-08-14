@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: lint build-api build-poller build-summarizer docker-build-api docker-build-poller docker-build-summarizer run-api run-poller run-summarizer
+.PHONY: lint build-api build-poller build-summarizer docker-build-api docker-build-poller docker-build-summarizer run-api run-poller run-summarizer run-frontend
 
 lint:
 	@fail=0; \
@@ -28,6 +28,9 @@ run-poller:
 # Long-running — generates immediately, then again every hour/day/week.
 run-summarizer:
 	set -a && source .env && set +a && cd server && go run ./cmd/summarizer
+
+run-frontend:
+	cd frontend && npm run dev
 
 docker-build-api:
 	docker build -t dredge4us-api .
