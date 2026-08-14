@@ -9,20 +9,43 @@
 // text-only client.
 package foolfuuka
 
+import "encoding/json"
+
+// flexString unmarshals either a JSON string or a bare JSON number into
+// a Go string. timestamp_expired is "0"/"1" on the board index and
+// thread endpoints, but the search endpoint sometimes returns the
+// actual unix expiry timestamp as a bare number instead — same field,
+// inconsistent wire type depending which endpoint (and which record)
+// it came from.
+type flexString string
+
+func (f *flexString) UnmarshalJSON(b []byte) error {
+	if len(b) > 0 && b[0] == '"' {
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return err
+		}
+		*f = flexString(s)
+		return nil
+	}
+	*f = flexString(b)
+	return nil
+}
+
 // apiPost is one post as FoolFuuka's JSON API returns it, from either the
 // board index or the thread endpoint. Numeric-looking fields other than
 // timestamp are strings in the wire format.
 type apiPost struct {
-	Num              string `json:"num"`
-	ThreadNum        string `json:"thread_num"`
-	IsOP             string `json:"op"`
-	Timestamp        int64  `json:"timestamp"`
-	TimestampExpired string `json:"timestamp_expired"`
-	Title            string `json:"title"`
-	Comment          string `json:"comment"`
-	Sticky           string `json:"sticky"`
-	Locked           string `json:"locked"`
-	Deleted          string `json:"deleted"`
+	Num              string     `json:"num"`
+	ThreadNum        string     `json:"thread_num"`
+	IsOP             string     `json:"op"`
+	Timestamp        int64      `json:"timestamp"`
+	TimestampExpired flexString `json:"timestamp_expired"`
+	Title            string     `json:"title"`
+	Comment          string     `json:"comment"`
+	Sticky           string     `json:"sticky"`
+	Locked           string     `json:"locked"`
+	Deleted          string     `json:"deleted"`
 }
 
 // apiIndexEntry is one thread as returned by the board index endpoint

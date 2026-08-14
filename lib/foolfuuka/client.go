@@ -232,7 +232,7 @@ func convertOP(op apiPost) (fourchan.Thread, error) {
 		Time:     op.Timestamp,
 		Sticky:   parseFlag(op.Sticky),
 		Closed:   parseFlag(op.Locked),
-		Archived: parseFlag(op.TimestampExpired),
+		Archived: parseExpired(op.TimestampExpired),
 	}, nil
 }
 
@@ -283,7 +283,7 @@ func convertPost(p apiPost) (fourchan.Post, error) {
 		Com:      p.Comment,
 		Sticky:   parseFlag(p.Sticky),
 		Closed:   parseFlag(p.Locked),
-		Archived: parseFlag(p.TimestampExpired),
+		Archived: parseExpired(p.TimestampExpired),
 	}, nil
 }
 
@@ -292,4 +292,14 @@ func parseFlag(s string) int {
 		return 1
 	}
 	return 0
+}
+
+// parseExpired interprets timestamp_expired: "0"/"" means not expired,
+// anything else — "1" on the index/thread endpoints, or a bare unix
+// timestamp on search results (see flexString) — means it is.
+func parseExpired(s flexString) int {
+	if s == "" || s == "0" {
+		return 0
+	}
+	return 1
 }

@@ -7,6 +7,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -158,14 +159,40 @@ const (
 // something meant to run continuously. Runs in the background so the
 // request returns immediately; a second call while one's in flight is
 // rejected rather than running two at once against the same hosts.
+// ?board= scopes to one configured board instead of all of them; ?minutes=
+// overrides backfillDuration — both for quick, bounded test runs.
 func backfillHandler(db DebugStore, boards []BackfillBoard) http.HandlerFunc {
 	var running atomic.Bool
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		if len(boards) == 0 {
+		selected := boards
+		if want := r.URL.Query().Get("board"); want != "" {
+			selected = nil
+			for _, b := range boards {
+				if b.Board == want {
+					selected = append(selected, b)
+				}
+			}
+			if len(selected) == 0 {
+				http.Error(w, fmt.Sprintf("board %q not configured for backfill", want), http.StatusBadRequest)
+				return
+			}
+		}
+		if len(selected) == 0 {
 			http.Error(w, "no backfill boards configured", http.StatusNotImplemented)
 			return
 		}
+
+		duration := backfillDuration
+		if raw := r.URL.Query().Get("minutes"); raw != "" {
+			n, err := strconv.Atoi(raw)
+			if err != nil || n <= 0 {
+				http.Error(w, "minutes must be a positive integer", http.StatusBadRequest)
+				return
+			}
+			duration = time.Duration(n) * time.Minute
+		}
+
 		if !running.CompareAndSwap(false, true) {
 			http.Error(w, "backfill already running", http.StatusConflict)
 			return
@@ -173,9 +200,9 @@ func backfillHandler(db DebugStore, boards []BackfillBoard) http.HandlerFunc {
 
 		go func() {
 			defer running.Store(false)
-			ctx, cancel := context.WithTimeout(context.Background(), backfillDuration)
+			ctx, cancel := context.WithTimeout(context.Background(), duration)
 			defer cancel()
-			runBackfill(ctx, db, boards)
+			runBackfill(ctx, db, selected)
 		}()
 
 		w.WriteHeader(http.StatusAccepted)
