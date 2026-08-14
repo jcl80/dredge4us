@@ -1,9 +1,11 @@
 // Package scheduler runs the poll loop: one ticking goroutine per watched
-// board, funnelling thread fetches through a small worker pool that all
-// share the client's single global rate limiter. This is deliberately an
-// in-process queue, not the Postgres SKIP LOCKED queue that's the known
-// eventual destination — Store is the seam that will let that swap in
-// later without touching this package.
+// board, funnelling thread fetches through a small worker pool. Each
+// board's fetches go through the fourchan.Source its config selected —
+// live 4chan or an archive — and every board sharing a source shares that
+// source's single rate limiter; see Scheduler.Sources. This is
+// deliberately an in-process queue, not the Postgres SKIP LOCKED queue
+// that's the known eventual destination — Store is the seam that will
+// let that swap in later without touching this package.
 package scheduler
 
 import (
@@ -24,7 +26,13 @@ import (
 
 // Scheduler runs one poll loop per watched board.
 type Scheduler struct {
-	Client    *fourchan.Client
+	// Sources maps a config.Board.Source value to the fourchan.Source
+	// that serves it: "" must map to the live fourchan.Client, and every
+	// other key present in config's archiveHosts table must map to the
+	// matching lib/foolfuuka.Client. A board whose Source has no entry
+	// here is a wiring bug (config accepted a source that Sources never
+	// got built for) and is skipped with a loud log rather than started.
+	Sources   map[string]fourchan.Source
 	Store     libstore.Store
 	Detectors []detect.Detector
 	Boards    []config.Board
@@ -36,56 +44,77 @@ type Scheduler struct {
 func (s *Scheduler) Run(ctx context.Context) {
 	var wg sync.WaitGroup
 	for _, b := range s.Boards {
+		client, ok := s.Sources[b.Source]
+		if !ok {
+			slog.Error("no source wired up for board, skipping", "board", b.Name, "source", b.Source)
+			continue
+		}
+
 		wg.Add(1)
-		go func(b config.Board) {
+		go func(b config.Board, client fourchan.Source) {
 			defer wg.Done()
-			s.watchBoard(ctx, b)
-		}(b)
+			s.watchBoard(ctx, b, client)
+		}(b, client)
 	}
 	wg.Wait()
 }
 
-// watchBoard runs cycles for a single board on its own ticker. Cycles run
+// watchBoard runs cycles for a single board on its own ticker, against
+// the source (live 4chan or an archive) its config selected. Cycles run
 // synchronously within this goroutine, so a slow cycle simply delays the
 // next tick rather than overlapping with it.
-func (s *Scheduler) watchBoard(ctx context.Context, b config.Board) {
+func (s *Scheduler) watchBoard(ctx context.Context, b config.Board, client fourchan.Source) {
 	ticker := time.NewTicker(b.Interval)
 	defer ticker.Stop()
 
 	var prev map[int]fourchan.Thread
-	prev = s.runCycle(ctx, b.Name, prev)
+	prev = s.runCycle(ctx, b, client, prev)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			prev = s.runCycle(ctx, b.Name, prev)
+			prev = s.runCycle(ctx, b, client, prev)
 		}
 	}
 }
 
-func catalogURL(board string) string {
-	return fmt.Sprintf("https://a.4cdn.org/%s/catalog.json", board)
+// sourceBase returns the host to key Store's last-modified cache under
+// for a board's source — a cache-key namespace, not a URL actually
+// fetched (each Source builds its own request URLs internally). This
+// keeps live and archive cache entries for the same board name from
+// colliding if a board's source ever changes.
+func sourceBase(source string) string {
+	if source == "" {
+		return "https://a.4cdn.org"
+	}
+	return source
 }
 
-func threadURL(board string, no int) string {
-	return fmt.Sprintf("https://a.4cdn.org/%s/thread/%d.json", board, no)
+func catalogURL(source, board string) string {
+	return fmt.Sprintf("%s/%s/catalog.json", sourceBase(source), board)
 }
 
-// runCycle fetches the board's catalog, diffs it against prev, fetches
-// and scans whatever's new or changed, persists findings and cycle
-// stats, and returns the new snapshot to become next cycle's prev.
-func (s *Scheduler) runCycle(ctx context.Context, board string, prev map[int]fourchan.Thread) map[int]fourchan.Thread {
+func threadURL(source, board string, no int) string {
+	return fmt.Sprintf("%s/%s/thread/%d.json", sourceBase(source), board, no)
+}
+
+// runCycle fetches the board's catalog from client, diffs it against
+// prev, fetches and scans whatever's new or changed, persists findings
+// and cycle stats, and returns the new snapshot to become next cycle's
+// prev.
+func (s *Scheduler) runCycle(ctx context.Context, b config.Board, client fourchan.Source, prev map[int]fourchan.Thread) map[int]fourchan.Thread {
+	board := b.Name
 	stats := libstore.PollCycle{Board: board, StartedAt: time.Now()}
 
-	url := catalogURL(board)
+	url := catalogURL(b.Source, board)
 	lastMod, _, err := s.Store.LastModified(ctx, url)
 	if err != nil {
 		slog.Error("lookup catalog last-modified failed", "board", board, "error", err)
 	}
 
-	catalog, newLastMod, err := s.Client.FetchCatalog(ctx, board, lastMod)
+	catalog, newLastMod, err := client.FetchCatalog(ctx, board, lastMod)
 	stats.Requests++
 
 	switch {
@@ -123,7 +152,7 @@ func (s *Scheduler) runCycle(ctx context.Context, board string, prev map[int]fou
 	toFetch = append(toFetch, change.New...)
 	toFetch = append(toFetch, change.Changed...)
 
-	findings := s.fetchAndDetect(ctx, board, toFetch, &stats)
+	findings := s.fetchAndDetect(ctx, b, client, toFetch, &stats)
 
 	if err := s.Store.SaveFindings(ctx, findings); err != nil {
 		slog.Error("save findings failed", "board", board, "error", err)
@@ -172,9 +201,9 @@ func (s *Scheduler) trackGenerals(ctx context.Context, board string, change diff
 }
 
 // fetchAndDetect fans toFetch out across the worker pool. Every fetch
-// still goes through the client's single shared rate limiter — the pool
-// only lets the scheduler avoid blocking on each fetch in turn.
-func (s *Scheduler) fetchAndDetect(ctx context.Context, board string, toFetch []fourchan.Thread, stats *libstore.PollCycle) []detect.Finding {
+// still goes through client's single shared rate limiter — the pool only
+// lets the scheduler avoid blocking on each fetch in turn.
+func (s *Scheduler) fetchAndDetect(ctx context.Context, b config.Board, client fourchan.Source, toFetch []fourchan.Thread, stats *libstore.PollCycle) []detect.Finding {
 	workers := s.Workers
 	if workers < 1 {
 		workers = 1
@@ -190,7 +219,7 @@ func (s *Scheduler) fetchAndDetect(ctx context.Context, board string, toFetch []
 		go func() {
 			defer wg.Done()
 			for t := range jobs {
-				f, req, notMod, errored := s.fetchOneThread(ctx, board, t)
+				f, req, notMod, errored := s.fetchOneThread(ctx, b, client, t)
 				mu.Lock()
 				stats.Requests += req
 				stats.NotModified += notMod
@@ -214,15 +243,16 @@ func (s *Scheduler) fetchAndDetect(ctx context.Context, board string, toFetch []
 
 // fetchOneThread fetches and scans a single thread. Posts are held only
 // on this call stack — they're discarded the moment Detect returns.
-func (s *Scheduler) fetchOneThread(ctx context.Context, board string, t fourchan.Thread) (findings []detect.Finding, requests, notModified int, errored bool) {
-	url := threadURL(board, t.No)
+func (s *Scheduler) fetchOneThread(ctx context.Context, b config.Board, client fourchan.Source, t fourchan.Thread) (findings []detect.Finding, requests, notModified int, errored bool) {
+	board := b.Name
+	url := threadURL(b.Source, board, t.No)
 
 	lastMod, _, err := s.Store.LastModified(ctx, url)
 	if err != nil {
 		slog.Error("lookup thread last-modified failed", "board", board, "thread", t.No, "error", err)
 	}
 
-	posts, newLastMod, err := s.Client.FetchThread(ctx, board, t.No, lastMod)
+	posts, newLastMod, err := client.FetchThread(ctx, board, t.No, lastMod)
 	requests = 1
 
 	switch {

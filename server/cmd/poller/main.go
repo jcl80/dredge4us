@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/jcl80/dredge4us/lib/detect"
+	"github.com/jcl80/dredge4us/lib/foolfuuka"
 	"github.com/jcl80/dredge4us/lib/fourchan"
 	"github.com/jcl80/dredge4us/server/internal/config"
 	"github.com/jcl80/dredge4us/server/internal/migrate"
@@ -44,8 +45,20 @@ func run() error {
 		return err
 	}
 
-	limiter := fourchan.NewLimiter()
-	client := fourchan.NewClient(limiter)
+	sources := map[string]fourchan.Source{
+		"": fourchan.NewClient(fourchan.NewLimiter()),
+	}
+	// One Limiter per archive host, shared by every board that maps to
+	// it — never one Limiter per board. See docs/archive-sources.md.
+	for _, b := range cfg.Boards {
+		if b.Source == "" {
+			continue
+		}
+		if _, ok := sources[b.Source]; ok {
+			continue
+		}
+		sources[b.Source] = foolfuuka.NewClient(b.Source, fourchan.NewLimiter())
+	}
 
 	detectors := []detect.Detector{detect.NewArtifactDetector()}
 	if cfg.OpenAIAPIKey != "" {
@@ -54,7 +67,7 @@ func run() error {
 	}
 
 	sched := &scheduler.Scheduler{
-		Client:    client,
+		Sources:   sources,
 		Store:     pg,
 		Detectors: detectors,
 		Boards:    cfg.Boards,
