@@ -52,7 +52,15 @@ func New(finder Finder, fc *fourchan.Client) http.Handler {
 }
 
 func archiveCheckHandler() http.HandlerFunc {
-	hosts := []string{"https://desuarchive.org", "https://archive.palanq.win"}
+	// board must be one each archive actually carries — an unmapped
+	// board 422s at the FoolFuuka app itself, which looks like a
+	// failure here but has nothing to do with Cloudflare reachability.
+	hosts := []struct{ base, board string }{
+		{"https://desuarchive.org", "g"},
+		{"https://archive.palanq.win", "news"},
+		{"https://archive.4plebs.org", "pol"},
+		{"https://archived.moe", "biz"},
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		type result struct {
 			Host        string `json:"host"`
@@ -62,11 +70,11 @@ func archiveCheckHandler() http.HandlerFunc {
 		}
 
 		results := make([]result, 0, len(hosts))
-		for _, host := range hosts {
-			res := result{Host: host}
+		for _, h := range hosts {
+			res := result{Host: h.base}
 
 			req, err := http.NewRequestWithContext(r.Context(), http.MethodGet,
-				host+"/_/api/chan/index/?board=g&page=1", nil)
+				h.base+"/_/api/chan/index/?board="+h.board+"&page=1", nil)
 			if err != nil {
 				res.Error = err.Error()
 				results = append(results, res)
