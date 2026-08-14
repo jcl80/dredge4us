@@ -11,8 +11,11 @@ import (
 // watchedBoards is hardcoded for now — it should track POLLER_BOARDS, but
 // api and poller are separate deployments with no shared config yet.
 // Revisit once that needs to stay in sync automatically (e.g. by reading
-// distinct boards out of the findings table instead).
-var watchedBoards = []string{"g", "biz"}
+// distinct boards out of the findings table instead). Keep this in sync
+// by hand with the poller worker's POLLER_BOARDS env var (.do/app.yaml
+// documents the intended value; the live value is set in the DO
+// console — see that file's header comment).
+var watchedBoards = []string{"g", "biz", "his", "k", "int", "news"}
 
 func isWatched(board string) bool {
 	for _, b := range watchedBoards {

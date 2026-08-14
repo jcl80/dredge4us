@@ -43,7 +43,10 @@ workers:
         value: "EDIT_ME_IN_DO_CONSOLE"
       - key: POLLER_BOARDS
         type: GENERAL
-        value: "g:20s,biz:20s"
+        # g, biz have no archive mapping (see docs/archive-sources.md)
+        # and stay on live 4chan. his/k/int poll desuarchive.org, news
+        # polls archive.palanq.win, instead of a.4cdn.org.
+        value: "g:20s,biz:20s,his:desuarchive:20s,k:desuarchive:20s,int:desuarchive:20s,news:palanq:20s"
 
   # Only touches Postgres + OpenAI, no 4chan API — deploys/fails
   # independently of poller. Generates on startup, then again every
