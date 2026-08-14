@@ -35,13 +35,18 @@ type Finder interface {
 
 var _ Finder = (*store.Postgres)(nil)
 
-// FindingsSaver is the write surface the backfill handler needs —
-// separate from Finder since every other route is read-only.
-type FindingsSaver interface {
+// DebugStore is the write/read surface the backfill and classify
+// handlers need, beyond Finder's read-only routes. Reversing findings'
+// "no post text" boundary (see migrations/0005_raw_posts.sql) is
+// confined to these two TEMP routes — every other route is unaffected.
+type DebugStore interface {
+	SaveRawPosts(ctx context.Context, posts []store.RawPost) error
+	UnclassifiedRawPosts(ctx context.Context, board string) ([]store.RawPost, error)
+	MarkClassified(ctx context.Context, ids []int64) error
 	SaveFindings(ctx context.Context, findings []detect.Finding) error
 }
 
-var _ FindingsSaver = (*store.Postgres)(nil)
+var _ DebugStore = (*store.Postgres)(nil)
 
 // BackfillBoard is one board /debug/backfill pulls, and the archive
 // client to pull it through. Client must be shared across every
@@ -54,9 +59,9 @@ type BackfillBoard struct {
 
 // New builds the API's HTTP handler. fc serves the /boards/all board
 // index — the only route that talks to 4chan directly instead of Store.
-// backfillBoards/detectors feed /debug/backfill; pass nil/empty to
-// disable it.
-func New(finder Finder, saver FindingsSaver, fc *fourchan.Client, backfillBoards []BackfillBoard, detectors []detect.Detector) http.Handler {
+// backfillBoards/detectors feed /debug/backfill and /debug/classify;
+// pass nil/empty to disable both.
+func New(finder Finder, debugStore DebugStore, fc *fourchan.Client, backfillBoards []BackfillBoard, detectors []detect.Detector) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /findings", findingsHandler(finder))
 	mux.HandleFunc("GET /boards", boardsHandler())
@@ -70,9 +75,14 @@ func New(finder Finder, saver FindingsSaver, fc *fourchan.Client, backfillBoards
 	// docs/archive-sources.md was drafted against. Remove once checked.
 	mux.HandleFunc("GET /debug/archive-check", archiveCheckHandler())
 	// TEMP: one-shot bulk pull via the archive search API (full board
-	// history, not just the currently bumped catalog) for a quick data
-	// volume burst. Remove once done.
-	mux.HandleFunc("GET /debug/backfill", backfillHandler(saver, backfillBoards, detectors))
+	// history, not just the currently bumped catalog) — stores raw post
+	// text, doesn't classify. Pair with /debug/classify. Remove when done.
+	mux.HandleFunc("GET /debug/backfill", backfillHandler(debugStore, backfillBoards))
+	// TEMP: runs detectors over whatever /debug/backfill stored and
+	// hasn't been classified yet. ?board= to scope to one board.
+	// Re-runnable any time, against detectors added since. Remove when
+	// backfilling is done.
+	mux.HandleFunc("GET /debug/classify", classifyHandler(debugStore, detectors))
 	return withLogging(mux)
 }
 
@@ -133,16 +143,22 @@ const (
 	// an empty page, so this is a safety cap, not a real limit hit in
 	// practice.
 	backfillMaxPages = 200
+	// classifyDuration is a safety cap, not a real budget — LLM calls in
+	// detect.Detector aren't bounded by the ctx passed in here (the
+	// interface takes no context), so a large enough backlog with LLM
+	// classification enabled can still run past this if each call is
+	// slow; it stops issuing new work at the deadline either way.
+	classifyDuration = 15 * time.Minute
 )
 
 // backfillHandler triggers a one-shot pull of each board's recent
 // history via the archive search API (not just the currently bumped
-// catalog) and runs it through detectors, same as the live poller would
-// — a burst for "get more data now", not something meant to run
-// continuously. Runs in the background so the request returns
-// immediately; a second call while one's in flight is rejected rather
-// than running two at once against the same hosts.
-func backfillHandler(saver FindingsSaver, boards []BackfillBoard, detectors []detect.Detector) http.HandlerFunc {
+// catalog) and stores the raw post text — no detection here, see
+// classifyHandler for that. A burst for "get more data now", not
+// something meant to run continuously. Runs in the background so the
+// request returns immediately; a second call while one's in flight is
+// rejected rather than running two at once against the same hosts.
+func backfillHandler(db DebugStore, boards []BackfillBoard) http.HandlerFunc {
 	var running atomic.Bool
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -159,7 +175,7 @@ func backfillHandler(saver FindingsSaver, boards []BackfillBoard, detectors []de
 			defer running.Store(false)
 			ctx, cancel := context.WithTimeout(context.Background(), backfillDuration)
 			defer cancel()
-			runBackfill(ctx, saver, boards, detectors)
+			runBackfill(ctx, db, boards)
 		}()
 
 		w.WriteHeader(http.StatusAccepted)
@@ -167,25 +183,25 @@ func backfillHandler(saver FindingsSaver, boards []BackfillBoard, detectors []de
 	}
 }
 
-func runBackfill(ctx context.Context, saver FindingsSaver, boards []BackfillBoard, detectors []detect.Detector) {
+func runBackfill(ctx context.Context, db DebugStore, boards []BackfillBoard) {
 	started := time.Now()
 	for _, b := range boards {
 		if ctx.Err() != nil {
 			slog.Info("backfill deadline hit, stopping early", "remaining_boards", b.Board)
 			break
 		}
-		backfillBoard(ctx, saver, b, detectors)
+		backfillBoard(ctx, db, b)
 	}
 	slog.Info("backfill complete", "elapsed", time.Since(started))
 }
 
 // backfillBoard pages through board's search results until the archive's
-// own result cap, ctx's deadline, or an error stops it, groups posts by
-// thread, runs detectors per thread (same shape the live poller uses —
-// see scheduler.fetchOneThread), and saves whatever's found.
-func backfillBoard(ctx context.Context, saver FindingsSaver, b BackfillBoard, detectors []detect.Detector) {
-	threads := make(map[int][]fourchan.Post)
-	threadSub := make(map[int]string)
+// own result cap, ctx's deadline, or an error stops it, and stores
+// every post's full text as-is — grouping into threads and running
+// detectors is classifyHandler's job, against whatever's still
+// unclassified, whenever it's run.
+func backfillBoard(ctx context.Context, db DebugStore, b BackfillBoard) {
+	var posts []store.RawPost
 	fetched := 0
 
 	for page := 1; page <= backfillMaxPages; page++ {
@@ -193,52 +209,164 @@ func backfillBoard(ctx context.Context, saver FindingsSaver, b BackfillBoard, de
 			break
 		}
 
-		posts, totalFound, err := b.Client.Search(ctx, b.Board, page)
+		fcPosts, totalFound, err := b.Client.Search(ctx, b.Board, page)
 		if err != nil {
 			slog.Error("backfill search failed", "board", b.Board, "page", page, "error", err)
 			break
 		}
-		if len(posts) == 0 {
+		if len(fcPosts) == 0 {
 			break
 		}
 
-		for _, p := range posts {
+		for _, p := range fcPosts {
 			threadNo := p.Resto
 			if threadNo == 0 {
 				threadNo = p.No
 			}
-			threads[threadNo] = append(threads[threadNo], p)
-			if p.Sub != "" {
-				threadSub[threadNo] = p.Sub
-			}
+			posts = append(posts, store.RawPost{
+				Board:    b.Board,
+				Source:   b.Client.BaseURL,
+				ThreadNo: threadNo,
+				PostNo:   p.No,
+				PostTime: p.PostTime(),
+				Sub:      p.Sub,
+				Com:      p.Com,
+				Sticky:   p.Sticky != 0,
+				Closed:   p.Closed != 0,
+				Archived: p.Archived != 0,
+			})
 		}
 
-		fetched += len(posts)
+		fetched += len(fcPosts)
 		if fetched >= totalFound {
 			break
-		}
-	}
-
-	var findings []detect.Finding
-	for threadNo, posts := range threads {
-		th := fourchan.Thread{No: threadNo, Sub: threadSub[threadNo], Replies: len(posts)}
-		for _, d := range detectors {
-			findings = append(findings, d.Detect(b.Board, th, posts)...)
 		}
 	}
 
 	// Independent of ctx and its own short timeout: ctx is the overall
 	// backfill deadline, and if it expired mid-page-loop above (the
 	// common case for whichever board is running when time runs out),
-	// reusing it here would drop that board's findings on the floor
-	// instead of saving whatever was gathered before the cutoff.
+	// reusing it here would drop that board's posts on the floor instead
+	// of saving whatever was gathered before the cutoff.
 	saveCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := saver.SaveFindings(saveCtx, findings); err != nil {
-		slog.Error("backfill save findings failed", "board", b.Board, "error", err)
+	if err := db.SaveRawPosts(saveCtx, posts); err != nil {
+		slog.Error("backfill save raw posts failed", "board", b.Board, "error", err)
 		return
 	}
-	slog.Info("backfill board done", "board", b.Board, "posts", fetched, "threads", len(threads), "findings", len(findings))
+	slog.Info("backfill board done", "board", b.Board, "posts", len(posts))
+}
+
+// classifyHandler runs detectors over whatever /debug/backfill stored
+// and no earlier classify pass has touched, optionally scoped to
+// ?board=. Re-runnable any time — e.g. after adding a detector — since
+// it only ever processes rows still unclassified, and marks them done
+// as it goes so a second run without new backfill data is a no-op.
+func classifyHandler(db DebugStore, detectors []detect.Detector) http.HandlerFunc {
+	var running atomic.Bool
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		if len(detectors) == 0 {
+			http.Error(w, "no detectors configured", http.StatusNotImplemented)
+			return
+		}
+		if !running.CompareAndSwap(false, true) {
+			http.Error(w, "classify already running", http.StatusConflict)
+			return
+		}
+
+		board := r.URL.Query().Get("board")
+		go func() {
+			defer running.Store(false)
+			ctx, cancel := context.WithTimeout(context.Background(), classifyDuration)
+			defer cancel()
+			runClassify(ctx, db, detectors, board)
+		}()
+
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte("classify started — check logs for progress\n"))
+	}
+}
+
+func runClassify(ctx context.Context, db DebugStore, detectors []detect.Detector, board string) {
+	raw, err := db.UnclassifiedRawPosts(ctx, board)
+	if err != nil {
+		slog.Error("classify: list unclassified raw posts failed", "board", board, "error", err)
+		return
+	}
+	if len(raw) == 0 {
+		slog.Info("classify: nothing unclassified", "board", board)
+		return
+	}
+
+	type threadKey struct {
+		board    string
+		threadNo int
+	}
+	groups := make(map[threadKey][]store.RawPost)
+	for _, p := range raw {
+		k := threadKey{p.Board, p.ThreadNo}
+		groups[k] = append(groups[k], p)
+	}
+
+	var findings []detect.Finding
+	ids := make([]int64, 0, len(raw))
+	for k, group := range groups {
+		if ctx.Err() != nil {
+			slog.Info("classify deadline hit, stopping early", "remaining_threads", len(groups))
+			break
+		}
+
+		sub := ""
+		fcPosts := make([]fourchan.Post, 0, len(group))
+		for _, p := range group {
+			if p.Sub != "" {
+				sub = p.Sub
+			}
+			resto := 0
+			if p.PostNo != p.ThreadNo {
+				resto = p.ThreadNo
+			}
+			fcPosts = append(fcPosts, fourchan.Post{
+				No:       p.PostNo,
+				Resto:    resto,
+				Time:     p.PostTime.Unix(),
+				Sub:      p.Sub,
+				Com:      p.Com,
+				Sticky:   boolToFlag(p.Sticky),
+				Closed:   boolToFlag(p.Closed),
+				Archived: boolToFlag(p.Archived),
+			})
+			ids = append(ids, p.ID)
+		}
+
+		th := fourchan.Thread{No: k.threadNo, Sub: sub, Replies: len(group)}
+		for _, d := range detectors {
+			findings = append(findings, d.Detect(k.board, th, fcPosts)...)
+		}
+	}
+
+	// Own short-lived context, not the classify loop's overall deadline —
+	// same reason as backfillBoard's save: if time ran out mid-loop above,
+	// ctx is already expired right when these two calls need to succeed.
+	saveCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := db.SaveFindings(saveCtx, findings); err != nil {
+		slog.Error("classify: save findings failed", "error", err)
+		return
+	}
+	if err := db.MarkClassified(saveCtx, ids); err != nil {
+		slog.Error("classify: mark classified failed", "error", err)
+		return
+	}
+	slog.Info("classify complete", "posts", len(raw), "threads", len(groups), "findings", len(findings))
+}
+
+func boolToFlag(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 func findingsHandler(finder Finder) http.HandlerFunc {

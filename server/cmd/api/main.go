@@ -18,7 +18,9 @@ import (
 	"github.com/jcl80/dredge4us/lib/foolfuuka"
 	"github.com/jcl80/dredge4us/lib/fourchan"
 	"github.com/jcl80/dredge4us/server/internal/api"
+	"github.com/jcl80/dredge4us/server/internal/migrate"
 	pgstore "github.com/jcl80/dredge4us/server/internal/store"
+	"github.com/jcl80/dredge4us/server/migrations"
 )
 
 const shutdownTimeout = 5 * time.Second
@@ -48,6 +50,14 @@ func run() error {
 		return err
 	}
 	defer pg.Close()
+
+	// api and poller both run every migration on their own startup —
+	// migrate.Run is idempotent (tracks applied filenames), so this is
+	// just belt-and-suspenders against whichever one happens to deploy
+	// first after a schema change, not a sign either one owns the schema.
+	if err := migrate.Run(ctx, pg.Pool(), migrations.Files); err != nil {
+		return err
+	}
 
 	fc := fourchan.NewClient(fourchan.NewLimiter())
 
