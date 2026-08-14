@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/jcl80/dredge4us/lib/foolfuuka"
 	"github.com/jcl80/dredge4us/lib/fourchan"
 	"github.com/jcl80/dredge4us/server/internal/store"
 )
@@ -43,7 +44,52 @@ func New(finder Finder, fc *fourchan.Client) http.Handler {
 	mux.HandleFunc("GET /kinds", kindsHandler(finder))
 	mux.HandleFunc("GET /summary", summaryHandler(finder))
 	mux.HandleFunc("GET /summary/narrative", narrativeSummaryHandler(finder))
+	// TEMP: verifies desuarchive/palanq are reachable (not Cloudflare-
+	// challenged) from this app's real DO egress, vs. the phone hotspot
+	// docs/archive-sources.md was drafted against. Remove once checked.
+	mux.HandleFunc("GET /debug/archive-check", archiveCheckHandler())
 	return withLogging(mux)
+}
+
+func archiveCheckHandler() http.HandlerFunc {
+	hosts := []string{"https://desuarchive.org", "https://archive.palanq.win"}
+	return func(w http.ResponseWriter, r *http.Request) {
+		type result struct {
+			Host        string `json:"host"`
+			Status      int    `json:"status"`
+			CFMitigated string `json:"cf_mitigated,omitempty"`
+			Error       string `json:"error,omitempty"`
+		}
+
+		results := make([]result, 0, len(hosts))
+		for _, host := range hosts {
+			res := result{Host: host}
+
+			req, err := http.NewRequestWithContext(r.Context(), http.MethodGet,
+				host+"/_/api/chan/index/?board=g&page=1", nil)
+			if err != nil {
+				res.Error = err.Error()
+				results = append(results, res)
+				continue
+			}
+			req.Header.Set("User-Agent", foolfuuka.DefaultUserAgent)
+
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				res.Error = err.Error()
+				results = append(results, res)
+				continue
+			}
+			res.Status = resp.StatusCode
+			res.CFMitigated = resp.Header.Get("cf-mitigated")
+			_ = resp.Body.Close()
+
+			results = append(results, res)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(results)
+	}
 }
 
 func findingsHandler(finder Finder) http.HandlerFunc {
