@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getBoards, getGenerals } from "../findings";
+import { getBoards, getGenerals, threadURL } from "../findings";
 import { Navbar } from "../nav";
 import { kindBadgeClass, pillClass, timeAgo } from "../ui";
 
@@ -50,7 +50,7 @@ export default async function GeneralsPage(props: PageProps<"/generals">) {
                 >
                   <td className="max-w-sm truncate px-4 py-2">
                     <a
-                      href={`https://boards.4chan.org/${g.board}/thread/${g.threadNo}`}
+                      href={threadURL(g.board, g.threadNo)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="hover:underline"

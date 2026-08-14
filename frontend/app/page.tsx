@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getBoards, getFindings, getKinds, getNarrativeSummaries, getSummary } from "./findings";
+import { getBoards, getFindings, getKinds, getNarrativeSummaries, getSummary, threadURL } from "./findings";
 import { Navbar } from "./nav";
 import { ExecutiveSummary } from "./summary";
 import { kindBadgeClass, pillClass, timeAgo } from "./ui";
@@ -120,7 +120,7 @@ export default async function Home(props: PageProps<"/">) {
                   </td>
                   <td className="max-w-xs px-4 py-2">
                     <a
-                      href={`https://boards.4chan.org/${f.board}/thread/${f.threadNo}#p${f.postNo}`}
+                      href={threadURL(f.board, f.threadNo, f.postNo)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="hover:underline"

@@ -13,6 +13,35 @@ export type Finding = {
   foundAt: string;
 };
 
+// archiveBoards maps a board to the FoolFuuka archive it's pulled from —
+// boards not listed here are live 4chan. Keep in sync by hand with
+// server/internal/config's archiveHosts + the poller's POLLER_BOARDS
+// value; there's no shared source of truth between Go and the frontend
+// yet. See docs/archive-sources.md.
+const archiveBoards: Record<string, string> = {
+  his: "https://desuarchive.org",
+  k: "https://desuarchive.org",
+  int: "https://desuarchive.org",
+  news: "https://archive.palanq.win",
+};
+
+// threadURL returns the human-facing link for a thread (and, with
+// postNo, a specific post within it): the archive's own permalink for a
+// board pulled from one, live boards.4chan.org otherwise. Live links
+// 404 once 4chan prunes the thread — the whole reason archive-sourced
+// boards exist — so this must not always point at boards.4chan.org.
+export function threadURL(board: string, threadNo: number, postNo?: number): string {
+  const archive = archiveBoards[board];
+  if (archive) {
+    // /{board}/post/{postNo}/ redirects to the post's thread and
+    // highlights it; falls back to the thread root with no post number.
+    return postNo ? `${archive}/${board}/post/${postNo}/` : `${archive}/${board}/thread/${threadNo}/`;
+  }
+  return postNo
+    ? `https://boards.4chan.org/${board}/thread/${threadNo}#p${postNo}`
+    : `https://boards.4chan.org/${board}/thread/${threadNo}`;
+}
+
 export function apiBase(): string {
   const base = process.env.API_BASE_URL;
   if (!base) {
