@@ -11,6 +11,14 @@ export type Finding = {
   threadSubject: string;
   threadReplies: number;
   foundAt: string;
+  // Populated by the LLM classifier (lib/detect/llm.go) starting in a
+  // later commit — null until then, and for regex-only findings. The UI
+  // falls back to matchedValue/note when these are null.
+  headline: string | null;
+  rationale: string | null;
+  confidence: number | null;
+  rule: string | null;
+  model: string | null;
 };
 
 // archiveBoards maps a board to the FoolFuuka archive it's pulled from —

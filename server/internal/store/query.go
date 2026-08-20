@@ -22,6 +22,11 @@ type FindingRecord struct {
 	ThreadSubject string    `json:"threadSubject"`
 	ThreadReplies int       `json:"threadReplies"`
 	FoundAt       time.Time `json:"foundAt"`
+	Headline      *string   `json:"headline"`
+	Rationale     *string   `json:"rationale"`
+	Confidence    *float32  `json:"confidence"`
+	Rule          *string   `json:"rule"`
+	Model         *string   `json:"model"`
 }
 
 // FindingsQuery filters ListFindings. Board and Kind are exact-match
@@ -36,7 +41,8 @@ type FindingsQuery struct {
 // ListFindings returns the most recent findings matching q, newest first.
 func (p *Postgres) ListFindings(ctx context.Context, q FindingsQuery) ([]FindingRecord, error) {
 	rows, err := p.pool.Query(ctx, `
-		SELECT id, board, thread_no, post_no, post_time, detector, kind, matched_value, note, thread_subject, thread_replies, found_at
+		SELECT id, board, thread_no, post_no, post_time, detector, kind, matched_value, note, thread_subject, thread_replies, found_at,
+		       headline, rationale, confidence, rule, model
 		FROM findings
 		WHERE ($1 = '' OR board = $1)
 		  AND ($2 = '' OR kind = $2)
@@ -54,6 +60,7 @@ func (p *Postgres) ListFindings(ctx context.Context, q FindingsQuery) ([]Finding
 		if err := rows.Scan(
 			&f.ID, &f.Board, &f.ThreadNo, &f.PostNo, &f.PostTime,
 			&f.Detector, &f.Kind, &f.MatchedValue, &f.Note, &f.ThreadSubject, &f.ThreadReplies, &f.FoundAt,
+			&f.Headline, &f.Rationale, &f.Confidence, &f.Rule, &f.Model,
 		); err != nil {
 			return nil, fmt.Errorf("scan finding: %w", err)
 		}
@@ -268,7 +275,8 @@ func (p *Postgres) summaryNewGenerals(ctx context.Context, board string, since t
 // FindingKindCounts for the full-window breakdown that isn't capped.
 func (p *Postgres) FindingsSince(ctx context.Context, since time.Time, limit int) ([]FindingRecord, error) {
 	rows, err := p.pool.Query(ctx, `
-		SELECT id, board, thread_no, post_no, post_time, detector, kind, matched_value, note, thread_subject, thread_replies, found_at
+		SELECT id, board, thread_no, post_no, post_time, detector, kind, matched_value, note, thread_subject, thread_replies, found_at,
+		       headline, rationale, confidence, rule, model
 		FROM findings
 		WHERE found_at >= $1
 		ORDER BY found_at DESC, id DESC
@@ -285,6 +293,7 @@ func (p *Postgres) FindingsSince(ctx context.Context, since time.Time, limit int
 		if err := rows.Scan(
 			&f.ID, &f.Board, &f.ThreadNo, &f.PostNo, &f.PostTime,
 			&f.Detector, &f.Kind, &f.MatchedValue, &f.Note, &f.ThreadSubject, &f.ThreadReplies, &f.FoundAt,
+			&f.Headline, &f.Rationale, &f.Confidence, &f.Rule, &f.Model,
 		); err != nil {
 			return nil, fmt.Errorf("scan finding: %w", err)
 		}

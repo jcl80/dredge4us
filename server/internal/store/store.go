@@ -78,10 +78,12 @@ func (p *Postgres) SaveFindings(ctx context.Context, findings []detect.Finding) 
 	for _, f := range findings {
 		batch.Queue(`
 			INSERT INTO findings
-				(board, thread_no, post_no, post_time, detector, kind, matched_value, note, thread_subject, thread_replies)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+				(board, thread_no, post_no, post_time, detector, kind, matched_value, note, thread_subject, thread_replies,
+				 headline, rationale, confidence, rule, model)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 			ON CONFLICT (board, post_no, kind, matched_value) DO NOTHING
-		`, f.Board, f.ThreadNo, f.PostNo, f.PostTime, f.Detector, f.Kind, f.MatchedValue, nullableText(f.Note), f.ThreadSubject, f.ThreadReplies)
+		`, f.Board, f.ThreadNo, f.PostNo, f.PostTime, f.Detector, f.Kind, f.MatchedValue, nullableText(f.Note), f.ThreadSubject, f.ThreadReplies,
+			nullableText(f.Headline), nullableText(f.Rationale), f.Confidence, nullableText(f.Rule), nullableText(f.Model))
 	}
 
 	br := p.pool.SendBatch(ctx, batch)

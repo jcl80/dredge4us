@@ -23,6 +23,16 @@ type Finding struct {
 	Note          string
 	ThreadSubject string
 	ThreadReplies int
+
+	// Headline, Rationale, Confidence, Rule and Model explain a finding
+	// for the UI — headline/rationale/confidence from the LLM classifier,
+	// rule/model as provenance. Unset (zero value) for every detector
+	// today; lib/detect/llm.go starts populating them in a later commit.
+	Headline   string
+	Rationale  string
+	Confidence *float32
+	Rule       string
+	Model      string
 }
 
 // Detector scans a thread's posts and returns whatever it found.
