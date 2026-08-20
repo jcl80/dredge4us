@@ -50,6 +50,14 @@ export function threadURL(board: string, threadNo: number, postNo?: number): str
     : `https://boards.4chan.org/${board}/thread/${threadNo}`;
 }
 
+// archiveNote is the short provenance note for a finding's actions row.
+// Full prune-time estimation for live threads ("prunes in ~5h") needs
+// thread age and lands in a later commit — until then this only
+// distinguishes archived (permalink stable) from live.
+export function archiveNote(board: string): string {
+  return archiveBoards[board] ? "archived — permalink stable" : "live thread";
+}
+
 export function apiBase(): string {
   const base = process.env.API_BASE_URL;
   if (!base) {

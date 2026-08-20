@@ -37,3 +37,34 @@ const KIND_COLORS: Record<string, string> = {
 export function kindBadgeClass(kind: string): string {
   return KIND_COLORS[kind] ?? "bg-[#f0eeeb] text-[#5c554d]";
 }
+
+// kindBadgeChipClass is kindBadgeClass plus the fixed badge sizing/type
+// shared by every place a kind badge renders (findings list rows, the
+// detail header, sibling findings, ...).
+export function kindBadgeChipClass(kind: string): string {
+  return `rounded-[3px] px-1.5 py-0.5 font-mono text-[10px] tracking-[0.03em] ${kindBadgeClass(kind)}`;
+}
+
+// confidenceInk is the severity-ink color for a finding's confidence bar
+// — only used there, never as a general severity indicator elsewhere.
+export function confidenceInk(confidence: number): string {
+  if (confidence >= 0.75) return "#9c3520";
+  if (confidence >= 0.6) return "#a8620f";
+  return "#8a827a";
+}
+
+export function confidencePct(confidence: number): string {
+  return `${Math.round(confidence * 100)}%`;
+}
+
+// detectorLabel maps a Finding.detector value to the display name the
+// design uses ("regex", "llm") — the stored value is the detector's own
+// Name(), which doesn't match that vocabulary.
+const DETECTOR_LABELS: Record<string, string> = {
+  artifact: "regex",
+  llm_classify: "llm",
+};
+
+export function detectorLabel(detector: string): string {
+  return DETECTOR_LABELS[detector] ?? detector;
+}
