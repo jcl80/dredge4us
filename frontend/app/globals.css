@@ -13,6 +13,14 @@
   --color-selected: #f4f7f5;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --animate-dredge-pulse: dredge-pulse 2s ease-in-out infinite;
+}
+
+@keyframes dredge-pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.82);
+  }
 }
 
 body {
