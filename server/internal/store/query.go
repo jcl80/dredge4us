@@ -203,20 +203,26 @@ func (p *Postgres) ListKinds(ctx context.Context, board string) ([]string, error
 	return out, nil
 }
 
+// instanceDensityCap bounds how many of a lineage's most recent
+// instances the tick strip shows — a long-running general can have far
+// more instances than are useful to render as ticks.
+const instanceDensityCap = 24
+
 // GeneralLineage is one general's current state: its latest known
 // thread instance, how many instances that lineage has had, and the
 // distinct finding kinds tied to its current thread (empty if none).
 type GeneralLineage struct {
-	Board         string     `json:"board"`
-	SubjectKey    string     `json:"subjectKey"`
-	ThreadNo      int64      `json:"threadNo"`
-	ThreadSubject string     `json:"threadSubject"`
-	Replies       int        `json:"replies"`
-	LastSeenAt    time.Time  `json:"lastSeenAt"`
-	EndedAt       *time.Time `json:"endedAt"`
-	InstanceCount int        `json:"instanceCount"`
-	FirstSeenAt   time.Time  `json:"firstSeenAt"`
-	FindingKinds  []string   `json:"findingKinds"`
+	Board           string     `json:"board"`
+	SubjectKey      string     `json:"subjectKey"`
+	ThreadNo        int64      `json:"threadNo"`
+	ThreadSubject   string     `json:"threadSubject"`
+	Replies         int        `json:"replies"`
+	LastSeenAt      time.Time  `json:"lastSeenAt"`
+	EndedAt         *time.Time `json:"endedAt"`
+	InstanceCount   int        `json:"instanceCount"`
+	FirstSeenAt     time.Time  `json:"firstSeenAt"`
+	FindingKinds    []string   `json:"findingKinds"`
+	InstanceDensity []int      `json:"instanceDensity"`
 }
 
 // ListGenerals returns one row per general lineage tracked for board —
@@ -265,6 +271,54 @@ func (p *Postgres) ListGenerals(ctx context.Context, board string) ([]GeneralLin
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate general_threads: %w", err)
+	}
+
+	densities, err := p.instanceDensities(ctx, board)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].InstanceDensity = densities[out[i].SubjectKey]
+	}
+
+	return out, nil
+}
+
+// instanceDensities returns, per subject_key, the finding count of each
+// of that lineage's instances — oldest first, capped at
+// instanceDensityCap by keeping the most recent ones. Every instance
+// has a distinct thread_no, so a finding belongs to exactly one.
+func (p *Postgres) instanceDensities(ctx context.Context, board string) (map[string][]int, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT gt.subject_key, COUNT(f.id)
+		FROM general_threads gt
+		LEFT JOIN findings f ON f.board = gt.board AND f.thread_no = gt.thread_no
+		WHERE gt.board = $1
+		GROUP BY gt.subject_key, gt.thread_no, gt.first_seen_at
+		ORDER BY gt.subject_key, gt.first_seen_at
+	`, board)
+	if err != nil {
+		return nil, fmt.Errorf("query instance densities: %w", err)
+	}
+	defer rows.Close()
+
+	out := map[string][]int{}
+	for rows.Next() {
+		var subjectKey string
+		var count int
+		if err := rows.Scan(&subjectKey, &count); err != nil {
+			return nil, fmt.Errorf("scan instance density: %w", err)
+		}
+		out[subjectKey] = append(out[subjectKey], count)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate instance densities: %w", err)
+	}
+
+	for key, d := range out {
+		if len(d) > instanceDensityCap {
+			out[key] = d[len(d)-instanceDensityCap:]
+		}
 	}
 
 	return out, nil

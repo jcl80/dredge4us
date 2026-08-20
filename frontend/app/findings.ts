@@ -158,6 +158,8 @@ export type GeneralLineage = {
   instanceCount: number;
   firstSeenAt: string;
   findingKinds: string[];
+  // Findings per instance, oldest first, capped at ~24 entries.
+  instanceDensity: number[];
 };
 
 // getGenerals returns the general-thread lineages tracked for board —

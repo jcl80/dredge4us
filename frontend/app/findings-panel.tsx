@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { archiveNote, Finding, FindingContext, sourceLabel, threadURL } from "./findings";
-import { confidenceInk, confidencePct, detectorLabel, kindBadgeChipClass, timeAgo } from "./ui";
+import { boardChipClass, confidenceInk, confidencePct, detectorLabel, kindBadgeChipClass, timeAgo } from "./ui";
 
 // headlineFor falls back to matchedValue, then note, when the classifier
 // hasn't populated headline yet (regex findings never do).
@@ -61,12 +61,6 @@ function groupByRecency(findings: Finding[]): { label: GroupLabel; items: Findin
 // pollIntervalMs matches the design's real-world cadence (25-30s) — the
 // prototype's 9s is sped up for demo purposes, not a spec.
 const pollIntervalMs = 25_000;
-
-function boardChipClass(active: boolean): string {
-  return `rounded-full border px-2.5 py-[3px] font-mono text-[11px] ${
-    active ? "border-ink bg-ink text-white" : "border-ink/[.12] bg-panel text-ink2"
-  }`;
-}
 
 export function FindingsWorkspace({
   findings,

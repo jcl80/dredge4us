@@ -91,3 +91,11 @@ const KIND_ACCENT: Record<string, string> = {
 export function kindAccentColor(kind: string): string {
   return KIND_ACCENT[kind] ?? "#5c554d";
 }
+
+// boardChipClass is the board-filter chip used on both Findings and
+// Generals — README calls for "the same board chips" on both screens.
+export function boardChipClass(active: boolean): string {
+  return `rounded-full border px-2.5 py-[3px] font-mono text-[11px] ${
+    active ? "border-ink bg-ink text-white" : "border-ink/[.12] bg-panel text-ink2"
+  }`;
+}
