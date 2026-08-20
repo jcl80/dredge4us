@@ -68,3 +68,26 @@ const DETECTOR_LABELS: Record<string, string> = {
 export function detectorLabel(detector: string): string {
   return DETECTOR_LABELS[detector] ?? detector;
 }
+
+// kindAccentColor is each kind's badge text color as a raw hex, for
+// contexts that can't use a Tailwind class (e.g. an inline style on a
+// bar fill) — KIND_COLORS above has to stay literal strings for
+// Tailwind's static scanner to see them, so this is a second table,
+// kept in sync with it by hand.
+const KIND_ACCENT: Record<string, string> = {
+  ARTIFACT_DROP: "#2b4c86",
+  TOOLING: "#2b4c86",
+  CAPABILITY_CLAIM: "#5b3f83",
+  LEAK_DOC: "#8a5a11",
+  INSIDER_TIP: "#8a5a11",
+  MISUSE_DEMAND: "#9c3520",
+  ACCOUNT_COMPROMISE: "#9c3520",
+  VULN_DISCLOSURE: "#9c3520",
+  CORP_NEWS: "#1c6650",
+  SENTIMENT_SHIFT: "#1c6650",
+  RECRUITMENT_CALL: "#8a3358",
+};
+
+export function kindAccentColor(kind: string): string {
+  return KIND_ACCENT[kind] ?? "#5c554d";
+}
