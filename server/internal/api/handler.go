@@ -405,6 +405,14 @@ func findingsHandler(finder Finder) http.HandlerFunc {
 			Kind:  r.URL.Query().Get("kind"),
 			Limit: parseLimit(r.URL.Query().Get("limit")),
 		}
+		if raw := r.URL.Query().Get("since"); raw != "" {
+			since, err := time.Parse(time.RFC3339, raw)
+			if err != nil {
+				http.Error(w, "since must be RFC3339", http.StatusBadRequest)
+				return
+			}
+			q.Since = &since
+		}
 
 		findings, err := finder.ListFindings(r.Context(), q)
 		if err != nil {

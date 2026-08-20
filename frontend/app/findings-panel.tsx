@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { archiveNote, Finding, FindingContext, sourceLabel, threadURL } from "./findings";
 import { confidenceInk, confidencePct, detectorLabel, kindBadgeChipClass, timeAgo } from "./ui";
 
@@ -58,6 +58,10 @@ function groupByRecency(findings: Finding[]): { label: GroupLabel; items: Findin
   }));
 }
 
+// pollIntervalMs matches the design's real-world cadence (25-30s) — the
+// prototype's 9s is sped up for demo purposes, not a spec.
+const pollIntervalMs = 25_000;
+
 function boardChipClass(active: boolean): string {
   return `rounded-full border px-2.5 py-[3px] font-mono text-[11px] ${
     active ? "border-ink bg-ink text-white" : "border-ink/[.12] bg-panel text-ink2"
@@ -77,14 +81,78 @@ export function FindingsWorkspace({
   const [selectedId, setSelectedId] = useState<number | null>(findings[0]?.id ?? null);
   const [copied, setCopied] = useState(false);
   const [context, setContext] = useState<FindingContext | null>(null);
+  const [liveFindings, setLiveFindings] = useState(findings);
+  const [pending, setPending] = useState<Finding[]>([]);
+  const [newIds, setNewIds] = useState<ReadonlySet<number>>(new Set());
 
-  const filtered = findings.filter((f) => matchesQuery(f, query));
+  const filtered = liveFindings.filter((f) => matchesQuery(f, query));
   const groups = groupByRecency(filtered);
-  const selected = findings.find((f) => f.id === selectedId) ?? findings[0] ?? null;
+  const selected = liveFindings.find((f) => f.id === selectedId) ?? liveFindings[0] ?? null;
 
   function select(f: Finding) {
     setSelectedId(f.id);
     setCopied(false);
+  }
+
+  // lastSeenRef is the live-poll cursor: findings found strictly after
+  // this get fetched as "pending" (not merged into liveFindings until
+  // the pill is clicked). Seeded from the newest finding already shown,
+  // so the first poll only ever returns genuinely new ones.
+  const lastSeenRef = useRef(liveFindings[0]?.foundAt ?? new Date().toISOString());
+
+  useEffect(() => {
+    let stopped = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    async function poll() {
+      const params = new URLSearchParams({ since: lastSeenRef.current });
+      if (board) params.set("board", board);
+      try {
+        const res = await fetch(`/api/findings?${params}`);
+        if (!res.ok || stopped) return;
+        const data: Finding[] = await res.json();
+        if (data.length === 0) return;
+        lastSeenRef.current = data[0].foundAt; // response is newest-first
+        setPending((prev) => {
+          const seen = new Set(prev.map((f) => f.id));
+          return [...data.filter((f) => !seen.has(f.id)), ...prev];
+        });
+      } catch {
+        // Transient network error — the next interval tries again.
+      }
+    }
+
+    function start() {
+      if (timer === null) timer = setInterval(poll, pollIntervalMs);
+    }
+    function stop() {
+      if (timer !== null) {
+        clearInterval(timer);
+        timer = null;
+      }
+    }
+    function onVisibilityChange() {
+      if (document.hidden) stop();
+      else start();
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    if (!document.hidden) start();
+
+    return () => {
+      stopped = true;
+      stop();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [board]);
+
+  function loadPending() {
+    if (pending.length === 0) return;
+    setLiveFindings((prev) => [...pending, ...prev]);
+    setNewIds((prev) => new Set([...prev, ...pending.map((f) => f.id)]));
+    setSelectedId(pending[0].id);
+    setCopied(false);
+    setPending([]);
   }
 
   // Deliberately does not reset context to null on selection change —
@@ -115,7 +183,7 @@ export function FindingsWorkspace({
           <div className="flex flex-wrap items-baseline gap-2.5">
             <h1 className="text-base font-semibold tracking-[-0.01em] text-ink">Findings</h1>
             <span className="font-mono text-[11px] text-ink4">
-              {filtered.length} of {findings.length} · sorted by recency
+              {filtered.length} of {liveFindings.length} · sorted by recency
             </span>
           </div>
           <p className="mt-1.5 max-w-[46ch] text-pretty text-[12.5px] text-ink3">
@@ -143,6 +211,18 @@ export function FindingsWorkspace({
           </div>
         </div>
 
+        {pending.length > 0 && (
+          <button
+            onClick={loadPending}
+            className="flex w-full items-center gap-2 border-b border-ink/[.08] bg-accent-soft px-4 py-[9px] text-left text-[12.5px] font-medium text-[#175a43]"
+          >
+            <span className="size-1.5 animate-dredge-pulse rounded-full bg-accent" />
+            <span>
+              {pending.length} new finding{pending.length === 1 ? "" : "s"} — load
+            </span>
+          </button>
+        )}
+
         <div className="max-h-[74vh] overflow-y-auto">
           {groups.map((g) => (
             <div key={g.label}>
@@ -165,6 +245,11 @@ export function FindingsWorkspace({
                     <div className="text-pretty text-[13.5px] font-medium text-ink">{headlineFor(f)}</div>
                     <div className="mt-[7px] flex flex-wrap items-center gap-1.5">
                       <span className={kindBadgeChipClass(f.kind)}>{f.kind}</span>
+                      {newIds.has(f.id) && (
+                        <span className="rounded-[3px] bg-accent px-1.5 py-0.5 font-mono text-[10px] text-white">
+                          NEW
+                        </span>
+                      )}
                       {f.confidence != null ? (
                         <span className="ml-auto flex items-center gap-[5px]">
                           <span className="block h-[3px] w-11 overflow-hidden rounded-full bg-ink/10">

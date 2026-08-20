@@ -11,7 +11,7 @@ export default async function Home(props: PageProps<"/">) {
   return (
     <div className="flex-1 bg-paper">
       <Navbar active="findings" board={board} />
-      <FindingsWorkspace findings={findings} boards={boards} board={board} />
+      <FindingsWorkspace key={board ?? "all"} findings={findings} boards={boards} board={board} />
     </div>
   );
 }

@@ -54,11 +54,14 @@ type FindingRecord struct {
 }
 
 // FindingsQuery filters ListFindings. Board and Kind are exact-match
-// filters, ignored when empty. Limit is the caller's responsibility to
-// clamp — this method does not enforce a maximum.
+// filters, ignored when empty. Since, when set, restricts to findings
+// found strictly after it — the live-poll pill's "new since last check"
+// query. Limit is the caller's responsibility to clamp — this method
+// does not enforce a maximum.
 type FindingsQuery struct {
 	Board string
 	Kind  string
+	Since *time.Time
 	Limit int
 }
 
@@ -70,9 +73,10 @@ func (p *Postgres) ListFindings(ctx context.Context, q FindingsQuery) ([]Finding
 		FROM findings
 		WHERE ($1 = '' OR board = $1)
 		  AND ($2 = '' OR kind = $2)
+		  AND ($4::timestamptz IS NULL OR found_at > $4)
 		ORDER BY found_at DESC, id DESC
 		LIMIT $3
-	`, q.Board, q.Kind, q.Limit)
+	`, q.Board, q.Kind, q.Limit, q.Since)
 	if err != nil {
 		return nil, fmt.Errorf("query findings: %w", err)
 	}
