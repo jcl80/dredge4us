@@ -110,7 +110,7 @@ export function FindingsWorkspace({
 
   return (
     <main className="mx-auto flex max-w-[1360px] flex-wrap items-start gap-5 px-5 pt-5 pb-16">
-      <section className="min-w-[340px] flex-1 basis-3/4 overflow-hidden rounded-lg border border-ink/10 bg-panel">
+      <section className="min-w-[340px] flex-1 overflow-hidden rounded-lg border border-ink/10 bg-panel">
         <div className="border-b border-ink/[.08] px-4 pt-3.5 pb-3">
           <div className="flex flex-wrap items-baseline gap-2.5">
             <h1 className="text-base font-semibold tracking-[-0.01em] text-ink">Findings</h1>
@@ -193,7 +193,7 @@ export function FindingsWorkspace({
         </div>
       </section>
 
-      <section className="sticky top-24 min-w-[340px] flex-1 basis-1/4">
+      <section className="sticky top-24 min-w-[340px] shrink grow-0 basis-[440px]">
         <div className="overflow-hidden rounded-lg border border-ink/10 bg-panel">
           {selected ? (
             <>

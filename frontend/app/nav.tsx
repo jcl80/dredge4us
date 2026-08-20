@@ -18,7 +18,7 @@ export async function Navbar({ active, board }: { active: NavLink; board?: strin
 
   return (
     <header className="sticky top-0 z-20 border-b border-ink/10 bg-paper/90 backdrop-blur">
-      <div className="mx-auto flex min-h-14 max-w-[1360px] flex-wrap items-center gap-6 px-5">
+      <div className="mx-auto flex min-h-14 max-w-[1360px] flex-wrap items-center gap-6 px-5 py-2.5">
         <div className="flex items-baseline gap-2.5">
           <Link href="/" className="font-mono text-[15px] font-semibold tracking-[-0.01em] text-ink">
             dredge4us
