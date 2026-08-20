@@ -28,6 +28,7 @@ const (
 // Finder is the read surface this package needs from storage.
 type Finder interface {
 	ListFindings(ctx context.Context, q store.FindingsQuery) ([]store.FindingRecord, error)
+	FindingContext(ctx context.Context, id int64) (*store.FindingContext, error)
 	ListGenerals(ctx context.Context, board string) ([]store.GeneralLineage, error)
 	ListKinds(ctx context.Context, board string) ([]string, error)
 	Summary(ctx context.Context, board string) ([]store.SummaryWindow, error)
@@ -65,6 +66,7 @@ type BackfillBoard struct {
 func New(finder Finder, debugStore DebugStore, fc *fourchan.Client, backfillBoards []BackfillBoard, detectors []detect.Detector) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /findings", findingsHandler(finder))
+	mux.HandleFunc("GET /findings/{id}/context", findingContextHandler(finder))
 	mux.HandleFunc("GET /boards", boardsHandler())
 	mux.HandleFunc("GET /boards/all", allBoardsHandler(fc))
 	mux.HandleFunc("GET /generals", generalsHandler(finder))
@@ -417,6 +419,32 @@ func findingsHandler(finder Finder) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(findings); err != nil {
 			slog.Error("encode findings response failed", "error", err)
+		}
+	}
+}
+
+func findingContextHandler(finder Finder) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid finding id", http.StatusBadRequest)
+			return
+		}
+
+		fc, err := finder.FindingContext(r.Context(), id)
+		if err != nil {
+			slog.Error("finding context failed", "id", id, "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if fc == nil {
+			http.Error(w, "finding not found", http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(fc); err != nil {
+			slog.Error("encode finding context response failed", "error", err)
 		}
 	}
 }

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { archiveNote, Finding, threadURL } from "./findings";
+import { useEffect, useState } from "react";
+import { archiveNote, Finding, FindingContext, sourceLabel, threadURL } from "./findings";
 import { confidenceInk, confidencePct, detectorLabel, kindBadgeChipClass, timeAgo } from "./ui";
 
 // headlineFor falls back to matchedValue, then note, when the classifier
@@ -76,6 +76,7 @@ export function FindingsWorkspace({
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(findings[0]?.id ?? null);
   const [copied, setCopied] = useState(false);
+  const [context, setContext] = useState<FindingContext | null>(null);
 
   const filtered = findings.filter((f) => matchesQuery(f, query));
   const groups = groupByRecency(filtered);
@@ -85,6 +86,27 @@ export function FindingsWorkspace({
     setSelectedId(f.id);
     setCopied(false);
   }
+
+  // Deliberately does not reset context to null on selection change —
+  // holding the previous finding's content while the new one loads
+  // avoids the panel collapsing height and popping back, per the design
+  // spec. A stale-response guard covers fast repeated selection.
+  const effectiveSelectedId = selected?.id ?? null;
+  useEffect(() => {
+    if (effectiveSelectedId === null) return;
+    let stale = false;
+    fetch(`/api/findings/${effectiveSelectedId}/context`)
+      .then((res) => (res.ok ? (res.json() as Promise<FindingContext>) : null))
+      .then((data) => {
+        if (!stale && data) setContext(data);
+      })
+      .catch(() => {
+        // Keep showing whatever context is already there.
+      });
+    return () => {
+      stale = true;
+    };
+  }, [effectiveSelectedId]);
 
   return (
     <main className="mx-auto flex max-w-[1360px] flex-wrap items-start gap-5 px-5 pt-5 pb-16">
@@ -227,7 +249,50 @@ export function FindingsWorkspace({
                 </div>
               )}
 
-              {/* Post excerpt and sibling findings need /findings/{id}/context — next commit. */}
+              {context && (
+                <div className="border-b border-ink/[.08] px-5.5 py-4">
+                  <div className="font-mono text-[10.5px] tracking-[0.06em] text-ink4 uppercase">Post</div>
+                  {context.postText && (
+                    <blockquote className="mt-2 max-w-[68ch] border-l-2 border-[rgba(31,122,90,0.35)] pl-3 text-[13.5px] whitespace-pre-wrap text-ink2">
+                      {context.postText}
+                    </blockquote>
+                  )}
+                  <div className="mt-3 text-[12.5px] text-ink3">
+                    In{" "}
+                    <a
+                      href={threadURL(selected.board, selected.threadNo)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:underline"
+                    >
+                      {selected.threadSubject || `#${selected.threadNo}`}
+                    </a>{" "}
+                    · {selected.threadReplies} replies · {sourceLabel(selected.board)}
+                  </div>
+                </div>
+              )}
+
+              {context && (
+                <div className="border-b border-ink/[.08] px-5.5 py-4">
+                  <div className="font-mono text-[10.5px] tracking-[0.06em] text-ink4 uppercase">
+                    Else in this thread
+                  </div>
+                  <div className="mt-2 flex flex-col gap-2">
+                    {context.neighbors.map((n) => (
+                      <div key={n.id} className="flex items-baseline gap-2.5 text-[12.5px] text-ink2">
+                        <span className={`${kindBadgeChipClass(n.kind)} whitespace-nowrap`}>{n.kind}</span>
+                        <span className="text-pretty">{headlineFor(n)}</span>
+                        <span className="ml-auto font-mono text-[10.5px] whitespace-nowrap text-ink4">
+                          {timeAgo(n.foundAt)}
+                        </span>
+                      </div>
+                    ))}
+                    {context.neighbors.length === 0 && (
+                      <div className="text-[12.5px] text-ink4">Nothing else flagged in this thread.</div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="flex flex-wrap items-center gap-2 px-5.5 py-3.5">
                 <a

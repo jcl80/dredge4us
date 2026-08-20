@@ -2,9 +2,33 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"html"
+	"regexp"
+	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
+
+var (
+	postBrPattern  = regexp.MustCompile(`(?i)<br\s*/?>`)
+	postTagPattern = regexp.MustCompile(`<[^>]+>`)
+)
+
+// plainPostText converts a raw_posts.com value — 4chan's HTML comment
+// fragment — into displayable text for the findings detail panel's post
+// excerpt. Unlike lib/detect's plainText (which collapses everything to
+// one line for regex matching), this keeps line breaks: <br> becomes a
+// newline rather than a space, since the UI renders the result with
+// white-space: pre-wrap.
+func plainPostText(com string) string {
+	text := postBrPattern.ReplaceAllString(com, "\n")
+	text = postTagPattern.ReplaceAllString(text, "")
+	text = html.UnescapeString(text)
+	return strings.TrimSpace(text)
+}
 
 // FindingRecord is a persisted findings row, as returned to the API. It's
 // a separate type from detect.Finding because it carries DB-assigned
@@ -71,6 +95,79 @@ func (p *Postgres) ListFindings(ctx context.Context, q FindingsQuery) ([]Finding
 	}
 
 	return out, nil
+}
+
+// findingContextNeighborLimit caps "Else in this thread" — a busy
+// general can have far more sibling findings than are useful to show.
+const findingContextNeighborLimit = 5
+
+// FindingContext is the extra detail the findings detail panel loads on
+// selection: the selected finding's own post text (nil if raw_posts was
+// never backfilled for it — most live-polled findings, since the
+// poller never stores raw text, only backfill does) and up to
+// findingContextNeighborLimit other findings in the same thread, newest
+// first.
+type FindingContext struct {
+	PostText  *string         `json:"postText"`
+	Neighbors []FindingRecord `json:"neighbors"`
+}
+
+// FindingContext returns id's context, or nil if no finding has that id.
+func (p *Postgres) FindingContext(ctx context.Context, id int64) (*FindingContext, error) {
+	var board string
+	var threadNo, postNo int64
+	err := p.pool.QueryRow(ctx,
+		`SELECT board, thread_no, post_no FROM findings WHERE id = $1`, id,
+	).Scan(&board, &threadNo, &postNo)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query finding %d: %w", id, err)
+	}
+
+	var postText *string
+	err = p.pool.QueryRow(ctx,
+		`SELECT com FROM raw_posts WHERE board = $1 AND post_no = $2`, board, postNo,
+	).Scan(&postText)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("query raw_post for finding %d: %w", id, err)
+	}
+	if postText != nil {
+		cleaned := plainPostText(*postText)
+		postText = &cleaned
+	}
+
+	rows, err := p.pool.Query(ctx, `
+		SELECT id, board, thread_no, post_no, post_time, detector, kind, matched_value, note, thread_subject, thread_replies, found_at,
+		       headline, rationale, confidence, rule, model
+		FROM findings
+		WHERE board = $1 AND thread_no = $2 AND id != $3
+		ORDER BY found_at DESC, id DESC
+		LIMIT $4
+	`, board, threadNo, id, findingContextNeighborLimit)
+	if err != nil {
+		return nil, fmt.Errorf("query neighbors for finding %d: %w", id, err)
+	}
+	defer rows.Close()
+
+	neighbors := []FindingRecord{}
+	for rows.Next() {
+		var f FindingRecord
+		if err := rows.Scan(
+			&f.ID, &f.Board, &f.ThreadNo, &f.PostNo, &f.PostTime,
+			&f.Detector, &f.Kind, &f.MatchedValue, &f.Note, &f.ThreadSubject, &f.ThreadReplies, &f.FoundAt,
+			&f.Headline, &f.Rationale, &f.Confidence, &f.Rule, &f.Model,
+		); err != nil {
+			return nil, fmt.Errorf("scan neighbor finding: %w", err)
+		}
+		neighbors = append(neighbors, f)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate neighbor findings: %w", err)
+	}
+
+	return &FindingContext{PostText: postText, Neighbors: neighbors}, nil
 }
 
 // ListKinds returns the distinct finding kinds present, optionally

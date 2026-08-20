@@ -21,6 +21,14 @@ export type Finding = {
   model: string | null;
 };
 
+// FindingContext is /findings/{id}/context's shape — the detail panel's
+// post excerpt and sibling findings, fetched client-side on selection
+// (see app/api/findings/[id]/context/route.ts).
+export type FindingContext = {
+  postText: string | null;
+  neighbors: Finding[];
+};
+
 // archiveBoards maps a board to the FoolFuuka archive it's pulled from —
 // boards not listed here are live 4chan. Keep in sync by hand with
 // server/internal/config's archiveHosts + the poller's POLLER_BOARDS
@@ -56,6 +64,13 @@ export function threadURL(board: string, threadNo: number, postNo?: number): str
 // distinguishes archived (permalink stable) from live.
 export function archiveNote(board: string): string {
   return archiveBoards[board] ? "archived — permalink stable" : "live thread";
+}
+
+// sourceLabel names where a finding's post came from, for the detail
+// panel's post attribution line.
+export function sourceLabel(board: string): string {
+  const archive = archiveBoards[board];
+  return archive ? archive.replace(/^https?:\/\//, "") : "live 4chan";
 }
 
 export function apiBase(): string {
