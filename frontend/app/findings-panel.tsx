@@ -110,7 +110,7 @@ export function FindingsWorkspace({
 
   return (
     <main className="mx-auto flex max-w-[1360px] flex-wrap items-start gap-5 px-5 pt-5 pb-16">
-      <section className="min-w-[340px] flex-1 basis-[420px] overflow-hidden rounded-lg border border-ink/10 bg-panel">
+      <section className="min-w-[340px] flex-1 basis-3/4 overflow-hidden rounded-lg border border-ink/10 bg-panel">
         <div className="border-b border-ink/[.08] px-4 pt-3.5 pb-3">
           <div className="flex flex-wrap items-baseline gap-2.5">
             <h1 className="text-base font-semibold tracking-[-0.01em] text-ink">Findings</h1>
@@ -193,11 +193,11 @@ export function FindingsWorkspace({
         </div>
       </section>
 
-      <section className="sticky top-24 min-w-[340px] flex-1 basis-[520px]">
+      <section className="sticky top-24 min-w-[340px] flex-1 basis-1/4">
         <div className="overflow-hidden rounded-lg border border-ink/10 bg-panel">
           {selected ? (
             <>
-              <div className="border-b border-ink/[.08] px-5.5 py-4">
+              <div className="border-b border-ink/[.08] px-5.5 pt-6 pb-4">
                 <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] text-ink4">
                   <span className={kindBadgeChipClass(selected.kind)}>{selected.kind}</span>
                   <span>/{selected.board}/</span>
