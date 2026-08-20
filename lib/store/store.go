@@ -23,6 +23,10 @@ type PollCycle struct {
 	Requests       int
 	NotModified    int
 	Errors         int
+	// PostsSeen is how many posts were fetched across every new/changed
+	// thread this cycle read — the Coverage screen's yield metric
+	// (findings kept per thousand posts read) needs this.
+	PostsSeen int
 }
 
 // GeneralThread is one physical thread instance recognized as a

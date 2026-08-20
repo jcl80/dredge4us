@@ -219,10 +219,11 @@ func (s *Scheduler) fetchAndDetect(ctx context.Context, b config.Board, client f
 		go func() {
 			defer wg.Done()
 			for t := range jobs {
-				f, req, notMod, errored := s.fetchOneThread(ctx, b, client, t)
+				f, req, notMod, postsSeen, errored := s.fetchOneThread(ctx, b, client, t)
 				mu.Lock()
 				stats.Requests += req
 				stats.NotModified += notMod
+				stats.PostsSeen += postsSeen
 				if errored {
 					stats.Errors++
 				}
@@ -243,7 +244,7 @@ func (s *Scheduler) fetchAndDetect(ctx context.Context, b config.Board, client f
 
 // fetchOneThread fetches and scans a single thread. Posts are held only
 // on this call stack — they're discarded the moment Detect returns.
-func (s *Scheduler) fetchOneThread(ctx context.Context, b config.Board, client fourchan.Source, t fourchan.Thread) (findings []detect.Finding, requests, notModified int, errored bool) {
+func (s *Scheduler) fetchOneThread(ctx context.Context, b config.Board, client fourchan.Source, t fourchan.Thread) (findings []detect.Finding, requests, notModified, postsSeen int, errored bool) {
 	board := b.Name
 	url := threadURL(b.Source, board, t.No)
 
@@ -257,13 +258,13 @@ func (s *Scheduler) fetchOneThread(ctx context.Context, b config.Board, client f
 
 	switch {
 	case errors.Is(err, fourchan.ErrNotModified):
-		return nil, requests, 1, false
+		return nil, requests, 1, 0, false
 	case errors.Is(err, fourchan.ErrGone):
 		slog.Info("thread gone", "board", board, "thread", t.No)
-		return nil, requests, 0, false
+		return nil, requests, 0, 0, false
 	case err != nil:
 		slog.Error("fetch thread failed", "board", board, "thread", t.No, "error", err)
-		return nil, requests, 0, true
+		return nil, requests, 0, 0, true
 	}
 
 	if err := s.Store.SetLastModified(ctx, url, newLastMod); err != nil {
@@ -274,7 +275,7 @@ func (s *Scheduler) fetchOneThread(ctx context.Context, b config.Board, client f
 		findings = append(findings, d.Detect(board, t, posts)...)
 	}
 
-	return findings, requests, 0, false
+	return findings, requests, 0, len(posts), false
 }
 
 func (s *Scheduler) finishCycle(ctx context.Context, stats libstore.PollCycle) {
@@ -286,6 +287,7 @@ func (s *Scheduler) finishCycle(ctx context.Context, stats libstore.PollCycle) {
 		"threads_gone", stats.ThreadsGone,
 		"requests", stats.Requests,
 		"not_modified", stats.NotModified,
+		"posts_seen", stats.PostsSeen,
 		"errors", stats.Errors,
 	)
 	if err := s.Store.SavePollCycle(ctx, stats); err != nil {

@@ -110,9 +110,9 @@ func nullableText(s string) *string {
 func (p *Postgres) SavePollCycle(ctx context.Context, c libstore.PollCycle) error {
 	_, err := p.pool.Exec(ctx, `
 		INSERT INTO poll_cycles
-			(board, started_at, threads_seen, threads_new, threads_changed, threads_gone, requests, not_modified, errors)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-	`, c.Board, c.StartedAt, c.ThreadsSeen, c.ThreadsNew, c.ThreadsChanged, c.ThreadsGone, c.Requests, c.NotModified, c.Errors)
+			(board, started_at, threads_seen, threads_new, threads_changed, threads_gone, requests, not_modified, errors, posts_seen)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`, c.Board, c.StartedAt, c.ThreadsSeen, c.ThreadsNew, c.ThreadsChanged, c.ThreadsGone, c.Requests, c.NotModified, c.Errors, c.PostsSeen)
 	if err != nil {
 		return fmt.Errorf("insert poll_cycle: %w", err)
 	}

@@ -17,6 +17,19 @@ const (
 	defaultOpenAIModel = "gpt-5.5"
 )
 
+// EstLLMCostPerThousandPostsUSD estimates what classifying 1,000 posts
+// costs at the configured model's published pricing and this app's
+// current batch size (lib/detect/llm.go's maxClassifyInputChars caps
+// one classify call to ~6000 chars of input, batching several posts per
+// call rather than one call per post). The Coverage screen's per-board
+// weekly cost is postsSeenPerWeek/1000 * this rate.
+//
+// This is a single editable knob, not a token-by-token cost model —
+// update it by hand when pricing or the batch size changes. It's an
+// estimate from published prices, not measured spend; the Coverage
+// screen says so in its footer.
+const EstLLMCostPerThousandPostsUSD = 0.35
+
 // archiveHosts maps a POLLER_BOARDS source name to the FoolFuuka archive
 // base URL it selects. See docs/archive-sources.md for why only these two
 // are wired up — 4plebs and Archived.Moe sit behind an active Cloudflare

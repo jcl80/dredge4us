@@ -324,6 +324,92 @@ func (p *Postgres) instanceDensities(ctx context.Context, board string) (map[str
 	return out, nil
 }
 
+// coverageWindow is how far back "per week" figures on the Coverage
+// screen look.
+const coverageWindow = 7 * 24 * time.Hour
+
+// BoardCoverageStats is one watched board's trailing-week activity —
+// the DB-derived half of a Coverage screen row. Board titles and the
+// total-boards-served count come from the live 4chan board index
+// (server/internal/api), not this store.
+type BoardCoverageStats struct {
+	Board            string     `json:"board"`
+	FindingsPerWeek  int        `json:"findingsPerWeek"`
+	PostsSeenPerWeek int        `json:"postsSeenPerWeek"`
+	LastCycleAt      *time.Time `json:"lastCycleAt"`
+	LiveGenerals     int        `json:"liveGenerals"`
+	TotalGenerals    int        `json:"totalGenerals"`
+}
+
+// CoverageStats returns one row per board in boards, in one query
+// rather than the old Boards page's N+1 (getGenerals + getKinds per
+// board). A board with no activity at all still gets a zero-valued row
+// — every board in boards is represented.
+func (p *Postgres) CoverageStats(ctx context.Context, boards []string) ([]BoardCoverageStats, error) {
+	since := time.Now().Add(-coverageWindow)
+
+	rows, err := p.pool.Query(ctx, `
+		WITH b AS (
+			SELECT unnest($1::text[]) AS board
+		),
+		finding_stats AS (
+			SELECT board, count(*) AS findings_per_week
+			FROM findings
+			WHERE found_at >= $2
+			GROUP BY board
+		),
+		poll_stats AS (
+			SELECT board, COALESCE(sum(posts_seen), 0) AS posts_seen_per_week, max(started_at) AS last_cycle_at
+			FROM poll_cycles
+			WHERE started_at >= $2
+			GROUP BY board
+		),
+		general_stats AS (
+			SELECT board,
+			       count(*) FILTER (WHERE ended_at IS NULL) AS live_generals,
+			       count(*) AS total_generals
+			FROM (
+				SELECT board, ended_at,
+				       ROW_NUMBER() OVER (PARTITION BY board, subject_key ORDER BY first_seen_at DESC) AS rn
+				FROM general_threads
+			) latest
+			WHERE rn = 1
+			GROUP BY board
+		)
+		SELECT b.board,
+		       COALESCE(fs.findings_per_week, 0),
+		       COALESCE(ps.posts_seen_per_week, 0),
+		       ps.last_cycle_at,
+		       COALESCE(gs.live_generals, 0),
+		       COALESCE(gs.total_generals, 0)
+		FROM b
+		LEFT JOIN finding_stats fs ON fs.board = b.board
+		LEFT JOIN poll_stats ps ON ps.board = b.board
+		LEFT JOIN general_stats gs ON gs.board = b.board
+		ORDER BY b.board
+	`, boards, since)
+	if err != nil {
+		return nil, fmt.Errorf("query coverage stats: %w", err)
+	}
+	defer rows.Close()
+
+	out := []BoardCoverageStats{}
+	for rows.Next() {
+		var s BoardCoverageStats
+		if err := rows.Scan(
+			&s.Board, &s.FindingsPerWeek, &s.PostsSeenPerWeek, &s.LastCycleAt, &s.LiveGenerals, &s.TotalGenerals,
+		); err != nil {
+			return nil, fmt.Errorf("scan coverage stats: %w", err)
+		}
+		out = append(out, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate coverage stats: %w", err)
+	}
+
+	return out, nil
+}
+
 // KindCount is one finding kind's count within a SummaryWindow.
 type KindCount struct {
 	Kind  string `json:"kind"`
