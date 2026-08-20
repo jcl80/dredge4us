@@ -51,8 +51,10 @@ func NewLLMClassifier(apiKey, model string) *LLMClassifier {
 func (c *LLMClassifier) Name() string { return "llm_classify" }
 
 type classifyResult struct {
-	Class     string `json:"class"`
-	Rationale string `json:"rationale"`
+	Class      string  `json:"class"`
+	Headline   string  `json:"headline"`
+	Rationale  string  `json:"rationale"`
+	Confidence float32 `json:"confidence"`
 }
 
 var classifySchema = map[string]any{
@@ -62,11 +64,17 @@ var classifySchema = map[string]any{
 			"type": "string",
 			"enum": classifications,
 		},
+		"headline": map[string]any{
+			"type": "string",
+		},
 		"rationale": map[string]any{
 			"type": "string",
 		},
+		"confidence": map[string]any{
+			"type": "number",
+		},
 	},
-	"required":             []string{"class", "rationale"},
+	"required":             []string{"class", "headline", "rationale", "confidence"},
 	"additionalProperties": false,
 }
 
@@ -85,7 +93,15 @@ INSIDER_TIP: an unverified claim of firsthand insider knowledge, with no documen
 RECRUITMENT_CALL: a call to organize, recruit, or coordinate a movement or campaign.
 NONE: none of the above clearly apply — use this for ordinary discussion.
 
-Most threads are NONE. Only pick another category when the thread clearly matches it. Give a one-sentence rationale.`
+Most threads are NONE. Only pick another category when the thread clearly matches it.
+
+For threads that aren't NONE, also produce:
+
+- headline: one plain sentence, written for someone who has not read the thread. State what was found and why it might matter. Do not restate the category name or use jargon (e.g. never "an artifact drop was detected" — say what the artifact actually is).
+- rationale: 2-3 sentences on what specifically triggered the flag — name the signal (a concrete pattern, how specific the claim is, whether other posters corroborated it) — and say plainly what is NOT being claimed or verified (e.g. "this is one anon's unverified claim" or "no confirmation from other posters yet").
+- confidence: a number from 0 to 1 for how strongly the evidence in *this thread* supports the classification — not how interesting the thread is. Reserve above 0.8 for a concrete, checkable artifact or claim; use 0.3-0.5 for a single uncorroborated claim with nothing to verify it.
+
+For NONE, still fill headline/rationale/confidence with any placeholder text — they're discarded.`
 
 // Detect implements Detector. It makes one LLM call per thread — posts
 // is the in-memory set of new/changed posts for this cycle, and nothing
@@ -121,6 +137,7 @@ func (c *LLMClassifier) Detect(board string, thread fourchan.Thread, posts []fou
 		return nil
 	}
 
+	confidence := result.Confidence
 	return []Finding{{
 		Board:         board,
 		ThreadNo:      thread.No,
@@ -131,6 +148,10 @@ func (c *LLMClassifier) Detect(board string, thread fourchan.Thread, posts []fou
 		Note:          result.Rationale,
 		ThreadSubject: thread.Sub,
 		ThreadReplies: thread.Replies,
+		Headline:      result.Headline,
+		Rationale:     result.Rationale,
+		Confidence:    &confidence,
+		Model:         c.model,
 	}}
 }
 

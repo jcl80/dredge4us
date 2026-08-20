@@ -66,6 +66,7 @@ func (d *ArtifactDetector) Detect(board string, thread fourchan.Thread, posts []
 					MatchedValue:  match,
 					ThreadSubject: thread.Sub,
 					ThreadReplies: thread.Replies,
+					Rule:          kind,
 				})
 			}
 		}
