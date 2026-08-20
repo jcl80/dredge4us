@@ -17,25 +17,23 @@ export function pillClass(active: boolean): string {
 }
 
 // Color grouping for LLM-classified kinds, by rough severity/category.
+// Desaturated so a list of twelve badges doesn't read as a carnival.
 // Regex kinds (lowercase, e.g. "github_url") aren't judgment calls, so
 // they stay neutral gray via the fallback.
 const KIND_COLORS: Record<string, string> = {
-  ARTIFACT_DROP: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
-  TOOLING: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
-  CAPABILITY_CLAIM: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
-  LEAK_DOC: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
-  INSIDER_TIP: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
-  MISUSE_DEMAND: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
-  ACCOUNT_COMPROMISE: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
-  VULN_DISCLOSURE: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
-  CORP_NEWS: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300",
-  SENTIMENT_SHIFT: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300",
-  RECRUITMENT_CALL: "bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300",
+  ARTIFACT_DROP: "bg-[#e7edf7] text-[#2b4c86]",
+  TOOLING: "bg-[#e7edf7] text-[#2b4c86]",
+  CAPABILITY_CLAIM: "bg-[#efe9f6] text-[#5b3f83]",
+  LEAK_DOC: "bg-[#f7eede] text-[#8a5a11]",
+  INSIDER_TIP: "bg-[#f7eede] text-[#8a5a11]",
+  MISUSE_DEMAND: "bg-[#f8e6e2] text-[#9c3520]",
+  ACCOUNT_COMPROMISE: "bg-[#f8e6e2] text-[#9c3520]",
+  VULN_DISCLOSURE: "bg-[#f8e6e2] text-[#9c3520]",
+  CORP_NEWS: "bg-[#e3f0ec] text-[#1c6650]",
+  SENTIMENT_SHIFT: "bg-[#e3f0ec] text-[#1c6650]",
+  RECRUITMENT_CALL: "bg-[#f7e8ef] text-[#8a3358]",
 };
 
 export function kindBadgeClass(kind: string): string {
-  return (
-    KIND_COLORS[kind] ??
-    "bg-zinc-100 text-zinc-700 dark:bg-white/[.08] dark:text-zinc-300"
-  );
+  return KIND_COLORS[kind] ?? "bg-[#f0eeeb] text-[#5c554d]";
 }
